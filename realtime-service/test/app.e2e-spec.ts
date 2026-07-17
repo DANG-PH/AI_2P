@@ -16,11 +16,21 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  it('/health (GET)', () => {
     return request(app.getHttpServer())
-      .get('/')
+      .get('/health')
       .expect(200)
-      .expect('Hello World!');
+      .expect('Content-Type', /json/);
+  });
+
+  it('/sessions/:sessionId reports a missing room (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/sessions/missing-room')
+      .expect(200)
+      .expect({
+        exists: false,
+        status: 'missing',
+      });
   });
 
   afterEach(async () => {

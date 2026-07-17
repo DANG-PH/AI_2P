@@ -6,8 +6,5 @@ rtc:
   port_range_end: 50100
   use_external_ip: true
 
-keys:
-  eb66355b9c6fe753617b038dcc9ae7b3: 4a4197425a0b0f61837a3a3a5d2afd1ac69906833390a1cc5982ef9f357c67b9
-
 logging:
   level: info
