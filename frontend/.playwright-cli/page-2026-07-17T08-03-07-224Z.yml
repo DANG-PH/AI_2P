@@ -1,0 +1,141 @@
+- generic [ref=f2e446]:
+  - link "Skip to summary" [ref=f2e640] [cursor=pointer]:
+    - /url: "#summary-content"
+  - banner [ref=f2e448]:
+    - generic [ref=f2e449]:
+      - link "ViEnMeet home" [ref=f2e641] [cursor=pointer]:
+        - /url: /
+        - generic [ref=f2e452]: ViEnMeet
+      - generic [ref=f2e453]:
+        - button "Interface language. English interface. Switch to Vietnamese" [active] [ref=f2e642] [cursor=pointer]:
+          - generic [ref=f2e459]: EN
+        - generic [ref=f2e460]: Meeting ended
+  - main [ref=f2e461]:
+    - generic [ref=f2e462]:
+      - generic [ref=f2e463]:
+        - paragraph [ref=f2e464]: Meeting summary
+        - heading "Vietnam–Singapore Partnership Discussion" [level=1] [ref=f2e465]
+      - generic [ref=f2e466]:
+        - button "Copy summary" [ref=f2e643] [cursor=pointer]
+        - button "Download transcript" [ref=f2e644] [cursor=pointer]
+        - button "Start another" [ref=f2e645] [cursor=pointer]
+    - generic [ref=f2e478]:
+      - generic [ref=f2e484]:
+        - term [ref=f2e485]: Duration
+        - definition [ref=f2e486]: 1m 27s
+      - generic [ref=f2e492]:
+        - term [ref=f2e493]: Conversation turns
+        - definition [ref=f2e494]: "4"
+      - generic [ref=f2e501]:
+        - term [ref=f2e502]: Languages
+        - definition [ref=f2e503]: Vietnamese ⇄ English
+    - generic [ref=f2e504]:
+      - region [ref=f2e646]:
+        - heading "Summary" [level=2] [ref=f2e647]
+        - paragraph [ref=f2e511]: The two parties discussed a three-month pilot project expected to begin in September. AISoft will prepare and send a technical proposal, while the partner will review the required technical resources.
+      - region [ref=f2e648]:
+        - heading "Action items" [level=2] [ref=f2e649]
+        - list [ref=f2e514]:
+          - listitem [ref=f2e515]:
+            - generic [ref=f2e516]:
+              - generic [ref=f2e517]: "01"
+              - paragraph [ref=f2e518]: Prepare and send the technical proposal
+            - generic [ref=f2e519]:
+              - generic [ref=f2e520]: Nguyễn Minh
+              - generic [ref=f2e521]: Open
+          - listitem [ref=f2e522]:
+            - generic [ref=f2e523]:
+              - generic [ref=f2e524]: "02"
+              - paragraph [ref=f2e525]: Review required technical resources
+            - generic [ref=f2e526]:
+              - generic [ref=f2e527]: James Tan
+              - generic [ref=f2e528]: Open
+    - region [ref=f2e650]:
+      - generic [ref=f2e530]:
+        - generic [ref=f2e531]:
+          - paragraph [ref=f2e532]: Aligned outcomes
+          - heading "Decisions" [level=2] [ref=f2e651]
+        - list [ref=f2e534]:
+          - listitem [ref=f2e652]:
+            - generic [ref=f2e653]: "01"
+            - text: The proposed pilot duration is three months.
+          - listitem [ref=f2e654]:
+            - generic [ref=f2e655]: "02"
+            - text: The expected starting period is September.
+    - region [ref=f2e656]:
+      - generic [ref=f2e540]:
+        - generic [ref=f2e541]:
+          - paragraph [ref=f2e542]: Full record
+          - heading "Bilingual transcript" [level=2] [ref=f2e657]
+        - generic [ref=f2e544]: 4 turns
+      - list [ref=f2e545]:
+        - listitem [ref=f2e546]:
+          - generic [ref=f2e548]:
+            - generic [ref=f2e549]: NM
+            - generic [ref=f2e550]:
+              - generic [ref=f2e551]:
+                - paragraph [ref=f2e552]: Nguyễn Minh
+                - generic [ref=f2e553]: VI → EN
+                - generic [ref=f2e554]: 00:08
+                - generic [ref=f2e555]: Final
+              - generic [ref=f2e559]:
+                - generic [ref=f2e560]:
+                  - paragraph [ref=f2e561]: Original · Vietnamese
+                  - paragraph [ref=f2e562]: Xin chào ông James. Chúng tôi muốn thảo luận về khả năng triển khai một dự án thử nghiệm tại Việt Nam.
+                - generic [ref=f2e563]:
+                  - paragraph [ref=f2e565]: Translation · English
+                  - paragraph [ref=f2e566]: Hello, James. We would like to discuss the possibility of launching a pilot project in Vietnam.
+          - generic [ref=f2e567]: Final translation available for Nguyễn Minh.
+        - listitem [ref=f2e568]:
+          - generic [ref=f2e570]:
+            - generic [ref=f2e571]: JT
+            - generic [ref=f2e572]:
+              - generic [ref=f2e573]:
+                - paragraph [ref=f2e574]: James Tan
+                - generic [ref=f2e575]: EN → VI
+                - generic [ref=f2e576]: 00:24
+                - generic [ref=f2e577]: Final
+              - generic [ref=f2e581]:
+                - generic [ref=f2e582]:
+                  - paragraph [ref=f2e583]: Original · English
+                  - paragraph [ref=f2e584]: That sounds promising. What timeline are you considering?
+                - generic [ref=f2e585]:
+                  - paragraph [ref=f2e587]: Translation · Vietnamese
+                  - paragraph [ref=f2e588]: Điều đó nghe rất triển vọng. Các bạn đang dự kiến tiến độ như thế nào?
+          - generic [ref=f2e589]: Final translation available for James Tan.
+        - listitem [ref=f2e590]:
+          - generic [ref=f2e592]:
+            - generic [ref=f2e593]: NM
+            - generic [ref=f2e594]:
+              - generic [ref=f2e595]:
+                - paragraph [ref=f2e596]: Nguyễn Minh
+                - generic [ref=f2e597]: VI → EN
+                - generic [ref=f2e598]: 00:42
+                - generic [ref=f2e599]: Final
+              - generic [ref=f2e603]:
+                - generic [ref=f2e604]:
+                  - paragraph [ref=f2e605]: Original · Vietnamese
+                  - paragraph [ref=f2e606]: Chúng tôi dự kiến bắt đầu vào tháng Chín và thực hiện trong ba tháng.
+                - generic [ref=f2e607]:
+                  - paragraph [ref=f2e609]: Translation · English
+                  - paragraph [ref=f2e610]: We expect to start in September and run the pilot for three months.
+          - generic [ref=f2e611]: Final translation available for Nguyễn Minh.
+        - listitem [ref=f2e612]:
+          - generic [ref=f2e614]:
+            - generic [ref=f2e615]: JT
+            - generic [ref=f2e616]:
+              - generic [ref=f2e617]:
+                - paragraph [ref=f2e618]: James Tan
+                - generic [ref=f2e619]: EN → VI
+                - generic [ref=f2e620]: 00:58
+                - generic [ref=f2e621]: Final
+              - generic [ref=f2e625]:
+                - generic [ref=f2e626]:
+                  - paragraph [ref=f2e627]: Original · English
+                  - paragraph [ref=f2e628]: Please send us a technical proposal after this meeting.
+                - generic [ref=f2e629]:
+                  - paragraph [ref=f2e631]: Translation · Vietnamese
+                  - paragraph [ref=f2e632]: Vui lòng gửi cho chúng tôi đề xuất kỹ thuật sau cuộc họp này.
+          - generic [ref=f2e633]: Final translation available for James Tan.
+    - button "Start another meeting" [ref=f2e658] [cursor=pointer]
+    - paragraph [ref=f2e639]

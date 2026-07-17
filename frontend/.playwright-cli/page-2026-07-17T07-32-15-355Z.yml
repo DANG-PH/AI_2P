@@ -1,0 +1,51 @@
+- generic [ref=e153]:
+  - link "Skip to conversation" [ref=e154] [cursor=pointer]:
+    - /url: "#meeting-conversation"
+  - banner [ref=e155]:
+    - generic [ref=e156]:
+      - link "ViEnMeet home" [ref=e157] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e159]: ViEnMeet
+      - generic [ref=e161]:
+        - paragraph [ref=e162]: Active meeting
+        - heading "Vietnam–Singapore Partnership Discussion" [level=1] [ref=e163]
+      - generic [ref=e164]: Live
+      - generic "Elapsed time 00:00" [ref=e171]: 00:00
+  - main [ref=e172]:
+    - region "Simulated video stage" [ref=e173]:
+      - generic [ref=e174]:
+        - generic [ref=e176]:
+          - generic [ref=e177]: JT
+          - generic [ref=e178]:
+            - paragraph [ref=e179]: James Tan
+            - paragraph [ref=e180]: English
+        - generic [ref=e181]: Active speaker
+        - generic [ref=e185]:
+          - generic [ref=e186]: NM
+          - generic [ref=e187]:
+            - generic [ref=e188]: You · Nguyễn Minh
+            - generic "Microphone on" [ref=e189]
+        - paragraph [ref=e190]: Simulated video stage · No camera stream
+    - region [ref=e191]:
+      - generic [ref=e192]:
+        - generic [ref=e193]:
+          - generic [ref=e194]:
+            - paragraph [ref=e195]: Live translation
+            - heading "Vietnamese priority" [level=2] [ref=e196]
+          - generic [ref=e197]: 0 turns
+        - generic [ref=e198]:
+          - button "Auto mode" [ref=e199] [cursor=pointer]
+          - button "VI → EN" [ref=e200] [cursor=pointer]
+          - button "Note" [ref=e205] [cursor=pointer]
+          - button "Run demo" [ref=e209] [cursor=pointer]
+      - generic [ref=e215]:
+        - heading "Translation is ready" [level=3] [ref=e218]
+        - paragraph [ref=e219]: Run the scripted demo to preview bilingual transcript states. No audio is processed.
+        - button "Run scripted demo" [ref=e220] [cursor=pointer]
+  - generic [ref=e221]:
+    - button "Microphone" [pressed] [ref=e222] [cursor=pointer]
+    - button "Camera" [pressed] [ref=e227] [cursor=pointer]
+    - button "Captions" [pressed] [ref=e232] [cursor=pointer]
+    - button "Share" [ref=e237] [cursor=pointer]
+    - button "More" [ref=e243] [cursor=pointer]
+    - button "End call" [ref=e250] [cursor=pointer]

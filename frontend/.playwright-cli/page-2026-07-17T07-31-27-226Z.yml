@@ -1,0 +1,97 @@
+- generic [ref=e3]:
+  - link "Skip to content" [ref=e4] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e5]:
+    - generic [ref=e6]:
+      - link "ViEnMeet home" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e9]: ViEnMeet
+      - navigation "Main navigation" [ref=e10]:
+        - link "How it works" [ref=e11] [cursor=pointer]:
+          - /url: "#how-it-works"
+        - link "Privacy" [ref=e12] [cursor=pointer]:
+          - /url: "#privacy"
+        - link "Start a meeting" [ref=e13] [cursor=pointer]:
+          - /url: /setup
+  - main [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]: Bilingual meeting interpreter
+        - heading "Two languages. One conversation." [level=1] [ref=e19]:
+          - text: Two languages.
+          - generic [ref=e20]: One conversation.
+        - paragraph [ref=e21]: Near real-time Vietnamese–English interpretation for natural and uninterrupted business meetings.
+        - generic [ref=e22]:
+          - button "Start a meeting" [ref=e23] [cursor=pointer]
+          - button "View live demo" [ref=e26] [cursor=pointer]
+        - generic [ref=e29]:
+          - generic [ref=e30]: Vietnamese ⇄ English
+          - generic [ref=e32]: Deterministic frontend demo
+          - generic [ref=e34]: No account required
+      - region "Simulated bilingual conversation preview" [ref=e36]:
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: Conversation monitor
+            - paragraph [ref=e41]: Vietnam–Singapore Partnership Discussion
+          - generic [ref=e42]: Simulated
+        - generic [ref=e45]:
+          - generic [ref=e46]: VI
+          - img "Mock audio input level" [ref=e47]
+          - generic [ref=e66]: EN
+        - generic [ref=e67]:
+          - article [ref=e68]:
+            - generic [ref=e69]:
+              - heading "Nguyễn Minh" [level=2] [ref=e71]
+              - generic [ref=e72]: VI
+              - time [ref=e73]: 00:08
+            - paragraph [ref=e74]: Xin chào ông James. Chúng tôi muốn thảo luận về khả năng triển khai một dự án thử nghiệm tại Việt Nam.
+            - generic [ref=e75]:
+              - generic [ref=e76]: EN
+              - paragraph [ref=e77]: Hello, James. We would like to discuss the possibility of launching a pilot project in Vietnam.
+            - generic [ref=e78]: Final translation
+          - article [ref=e81]:
+            - generic [ref=e82]:
+              - heading "James Tan" [level=2] [ref=e84]
+              - generic [ref=e85]: EN
+              - time [ref=e86]: 00:24
+            - paragraph [ref=e87]: That sounds promising. What timeline are you considering?
+            - generic [ref=e88]:
+              - generic [ref=e89]: VI
+              - paragraph [ref=e90]: Điều đó nghe rất triển vọng. Các bạn đang dự kiến tiến độ như thế nào?
+            - generic [ref=e91]: Final translation
+        - generic [ref=e94]:
+          - generic [ref=e95]: "Connection: excellent"
+          - generic [ref=e97]: Cloud prototype
+          - generic [ref=e100]: "Mock latency: ~780 ms"
+    - region [ref=e101]:
+      - heading "How ViEnMeet supports bilingual meetings" [level=2] [ref=e102]
+      - generic [ref=e103]:
+        - article [ref=e104]:
+          - generic [ref=e105]: "01"
+          - generic [ref=e106]:
+            - heading "Near real-time translation" [level=3] [ref=e115]
+            - paragraph [ref=e116]: Follow each turn in both languages without breaking the meeting flow.
+        - article [ref=e117]:
+          - generic [ref=e118]: "02"
+          - generic [ref=e119]:
+            - heading "Business terminology support" [level=3] [ref=e123]
+            - paragraph [ref=e124]: Keep company names, acronyms, and preferred phrasing consistent.
+        - article [ref=e125]:
+          - generic [ref=e126]: "03"
+          - generic [ref=e127]:
+            - heading "Privacy-ready architecture" [level=3] [ref=e132]
+            - paragraph [ref=e133]: Prepared for explicit processing, retention, and deployment controls.
+    - region [ref=e134]:
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - paragraph [ref=e137]: Architecture note
+          - heading "Clear boundaries by design." [level=2] [ref=e138]
+        - generic [ref=e140]:
+          - paragraph [ref=e141]: This frontend prototype does not capture audio, call an external AI service, or store meeting data remotely. Production processing, retention, and deployment controls can be defined before integrations are switched on.
+          - paragraph [ref=e146]: Simulation is labeled clearly throughout the experience.
+  - contentinfo [ref=e147]:
+    - generic [ref=e148]:
+      - link "ViEnMeet home" [ref=e149] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e151]: ViEnMeet
+      - paragraph [ref=e152]: ViEnMeet frontend prototype · Vietnamese ⇄ English

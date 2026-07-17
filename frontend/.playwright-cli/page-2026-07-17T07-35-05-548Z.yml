@@ -1,0 +1,121 @@
+- generic [ref=e153]:
+  - link "Skip to conversation" [ref=e154] [cursor=pointer]:
+    - /url: "#meeting-conversation"
+  - banner [ref=e155]:
+    - generic [ref=e156]:
+      - link "ViEnMeet home" [ref=e157] [cursor=pointer]:
+        - /url: /
+      - heading "Vietnam–Singapore Partnership Discussion" [level=1] [ref=e163]
+      - generic [ref=e164]: Live
+      - generic "Elapsed time 02:51" [ref=e472]: 02:51
+  - main [ref=e172]:
+    - region "Simulated video stage" [ref=e173]:
+      - generic [ref=e174]:
+        - generic [ref=e176]:
+          - generic [ref=e177]: JT
+          - generic [ref=e178]:
+            - paragraph [ref=e179]: James Tan
+            - paragraph [ref=e180]: English
+        - generic [ref=e181]: Active speaker
+        - generic [ref=e185]:
+          - generic [ref=e186]: NM
+          - generic [ref=e187]:
+            - generic [ref=e188]: You · Nguyễn Minh
+            - generic "Microphone on" [ref=e189]
+        - paragraph [ref=e190]: Simulated video stage · No camera stream
+    - region [ref=e191]:
+      - generic [ref=e192]:
+        - generic [ref=e193]:
+          - generic [ref=e194]:
+            - paragraph [ref=e195]: Live translation
+            - heading "Vietnamese priority" [level=2] [ref=e196]
+          - generic [ref=e197]: 4 turns
+        - generic [ref=e198]:
+          - button "Auto mode" [ref=e199] [cursor=pointer]
+          - button "VI → EN" [ref=e200] [cursor=pointer]
+          - button "Note" [ref=e205] [cursor=pointer]
+          - button "Reset" [ref=e259] [cursor=pointer]
+      - list "Conversation turns" [ref=e263]:
+        - listitem [ref=e264]:
+          - generic [ref=e267]:
+            - generic [ref=e268]:
+              - paragraph [ref=e269]: Nguyễn Minh
+              - generic [ref=e270]: VI → EN
+              - generic [ref=e271]: 00:08
+              - generic [ref=e272]: Final
+            - generic [ref=e275]:
+              - generic [ref=e276]:
+                - paragraph [ref=e277]: Original · Vietnamese
+                - paragraph [ref=e278]: Xin chào ông James. Chúng tôi muốn thảo luận về khả năng triển khai một dự án thử nghiệm tại Việt Nam.
+              - generic [ref=e279]:
+                - generic [ref=e280]:
+                  - paragraph [ref=e281]: Translation · English
+                  - generic [ref=e282]:
+                    - button "Copy translation" [ref=e283] [cursor=pointer]
+                    - button "Correct translation" [ref=e287] [cursor=pointer]
+                - paragraph [ref=e291]: Hello, James. We would like to discuss the possibility of launching a pilot project in Vietnam.
+          - generic [ref=e295]: Final translation available for Nguyễn Minh.
+        - listitem [ref=e296]:
+          - generic [ref=e299]:
+            - generic [ref=e300]:
+              - paragraph [ref=e301]: James Tan
+              - generic [ref=e302]: EN → VI
+              - generic [ref=e303]: 00:24
+              - generic [ref=e304]: Final
+            - generic [ref=e307]:
+              - generic [ref=e308]:
+                - paragraph [ref=e309]: Original · English
+                - paragraph [ref=e310]: That sounds promising. What timeline are you considering?
+              - generic [ref=e311]:
+                - generic [ref=e312]:
+                  - paragraph [ref=e313]: Translation · Vietnamese
+                  - generic [ref=e314]:
+                    - button "Copy translation" [ref=e315] [cursor=pointer]
+                    - button "Correct translation" [ref=e319] [cursor=pointer]
+                - paragraph [ref=e323]: Điều đó nghe rất triển vọng. Các bạn đang dự kiến tiến độ như thế nào?
+          - generic [ref=e332]: Final translation available for James Tan.
+        - listitem [ref=e333]:
+          - generic [ref=e336]:
+            - generic [ref=e337]:
+              - paragraph [ref=e338]: Nguyễn Minh
+              - generic [ref=e339]: VI → EN
+              - generic [ref=e340]: 00:42
+              - generic [ref=e341]: Final
+            - generic [ref=e345]:
+              - generic [ref=e346]:
+                - paragraph [ref=e347]: Original · Vietnamese
+                - paragraph [ref=e348]: Chúng tôi dự kiến bắt đầu vào tháng Chín và thực hiện trong ba tháng.
+              - generic [ref=e349]:
+                - generic [ref=e350]:
+                  - paragraph [ref=e351]: Translation · English
+                  - generic [ref=e352]:
+                    - button "Copy translation" [ref=e353] [cursor=pointer]
+                    - button "Correct translation" [ref=e357] [cursor=pointer]
+                - paragraph [ref=e361]: We expect to start in September and run the pilot for three months.
+          - generic [ref=e362]: Final translation available for Nguyễn Minh.
+        - listitem [ref=e363]:
+          - generic [ref=e366]:
+            - generic [ref=e367]:
+              - paragraph [ref=e368]: James Tan
+              - generic [ref=e369]: EN → VI
+              - generic [ref=e370]: 00:58
+              - generic [ref=e371]: Final
+            - generic [ref=e375]:
+              - generic [ref=e376]:
+                - paragraph [ref=e377]: Original · English
+                - paragraph [ref=e378]: Please send us a technical proposal after this meeting.
+              - generic [ref=e379]:
+                - generic [ref=e380]:
+                  - paragraph [ref=e381]: Translation · Vietnamese
+                  - generic [ref=e382]:
+                    - button "Copy translation" [ref=e383] [cursor=pointer]
+                    - button "Correct translation" [ref=e387] [cursor=pointer]
+                - paragraph [ref=e391]: Vui lòng gửi cho chúng tôi đề xuất kỹ thuật sau cuộc họp này.
+          - generic [ref=e392]: Final translation available for James Tan.
+  - generic [ref=e221]:
+    - button "Microphone" [pressed] [ref=e222] [cursor=pointer]
+    - button "Camera" [pressed] [ref=e227] [cursor=pointer]
+    - button "Captions" [pressed] [ref=e232] [cursor=pointer]
+    - button "Share" [ref=e237] [cursor=pointer]
+    - button "More" [active] [ref=e243] [cursor=pointer]
+    - button "End call" [ref=e250] [cursor=pointer]
