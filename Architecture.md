@@ -1,7 +1,8 @@
-# ViEngsMeet — Integration Guide
+# ViEnMeet — Integration Guide
 
-> Backend NestJS đã sẵn sàng. Tài liệu này dành cho 2 team:
-> - **Frontend (Next.js)**: đọc **Phần 2**
+> Tài liệu mô tả contract tích hợp dự kiến giữa 3 hệ thống. Trạng thái và
+> giới hạn triển khai hiện tại được ghi rõ trong từng phần:
+> - **Frontend (React + Vite)**: đọc **Phần 2**
 > - **AI Service (FastAPI)**: đọc **Phần 3**
 >
 > Cả 2 team đọc **Phần 1** để hiểu bức tranh tổng thể.
@@ -14,7 +15,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        CLIENT (Next.js)                         │
+│                     CLIENT (React + Vite)                       │
 │                                                                 │
 │  ┌────────────────────┐        ┌──────────────────────┐         │
 │  │ Transcript Module  │        │ Video Call Module    │         │
@@ -34,6 +35,7 @@
    │  - POST /livekit/    │───────▶│  - Signaling         │
    │    token             │  JWT   │  - Media forwarding  │
    │  - GET /health       │        │                      │
+   │    (planned)         │        │                      │
    └──────────┬───────────┘        └──────────────────────┘
               │                               ▲
               │ raw ws://localhost:8000       │ (client connect trực tiếp
@@ -50,8 +52,8 @@
 
 | Hệ thống | Nhiệm vụ | Ai code |
 |----------|----------|---------|
-| **Client** (Next.js) | UI, capture audio, hiển thị transcript, video call | Frontend team |
-| **NestJS** | Auth LiveKit, session state, forward audio, broadcast events | ✅ **Đã xong** |
+| **Client** (React + Vite) | UI, capture audio, hiển thị transcript, video call | Frontend team |
+| **NestJS** | Auth LiveKit, session state, forward audio, broadcast events | Có implementation; xem giới hạn ở Phần 2 |
 | **FastAPI** | VAD + Speech-to-Text + Translation | AI team |
 | **LiveKit Server** | Video call SFU | ✅ Deploy Docker |
 
@@ -61,7 +63,7 @@
 |----------|--------|---------|--------|
 | `/audio` (Socket.IO) | WSS | Realtime transcript pipeline | Client |
 | `/livekit/token` | POST | Sinh JWT để join room LiveKit | Client |
-| `/health` | GET | Health check monitoring | Ops |
+| `/health` | GET | Health check monitoring | Ops — đã ghi trong contract nhưng chưa có controller tương ứng |
 | `ws://localhost:8000/ws/session` | — | Bridge sang FastAPI | NestJS gọi FastAPI |
 
 **Base URL production:** `https://api-hackathon.dangpham.id.vn`
@@ -72,49 +74,74 @@
 
 ### 2.1 Cài dependencies
 
+Frontend hiện dùng `pnpm` và chưa cài client production vì realtime connection
+vẫn bị khóa ở prototype. Khi các blocker tại mục 2.10 được xử lý và team quyết
+định bật tích hợp:
+
 ```bash
-npm install socket.io-client livekit-client
+cd frontend
+pnpm add socket.io-client livekit-client
 ```
+
+Stack frontend hiện tại: React 19, Vite 8, TypeScript 6 strict, React Router 8,
+Zustand 5 và Tailwind CSS 4. Node.js 22.22 trở lên.
 
 ### 2.2 Bootstrap flow — thứ tự thao tác khi vào phòng họp
 
 ```
-Bước 1: Generate sessionId + clientId
-Bước 2: Song song (chạy đồng thời, không cần đợi nhau):
+Bước 1: Lấy roomId từ route /room/:roomId và clientId ổn định từ localStorage
+Bước 2: Dùng roomId làm cả Socket.IO sessionId và LiveKit roomName
+Bước 3: Song song (chạy đồng thời, không cần đợi nhau):
         [A] Kết nối Socket.IO (transcript)
         [B] Lấy token + connect LiveKit (video)
-Bước 3: Đợi Socket.IO event 'session.ready' → enable nút mic transcript
-Bước 4: User bấm mic → capture audio 16kHz PCM → emit 'audio.chunk'
-Bước 5: Nhận events transcript và cập nhật UI
+Bước 4: Nhận 'session.ready' → xác nhận gateway đã nhận client
+Bước 5: Chỉ enable audio sau một tín hiệu AI-ready thực sự
+Bước 6: User bật mic → capture audio 16kHz PCM → emit 'audio.chunk'
+Bước 7: Chuẩn hóa events transcript và cập nhật store bằng utteranceId
 ```
+
+> **Quan trọng:** implementation hiện phát `session.ready` ngay sau khi gọi
+> `openSession()`, trước khi WebSocket sang AI worker phát sự kiện `open`.
+> Vì vậy frontend chỉ được diễn giải event này là **gateway connected**, không
+> phải AI-ready. Nếu gửi audio ở thời điểm này, backend có thể drop chunk.
 
 ### 2.3 Setup identifiers
 
 ```typescript
-// Cần lưu localStorage để giữ định danh qua reload
+const CLIENT_ID_STORAGE_KEY = 'vienmeet-client-id';
+
 function getOrCreateClientId(): string {
-  let id = localStorage.getItem('clientId');
+  let id = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
   if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem('clientId', id);
+    id = `client-${crypto.randomUUID()}`;
+    localStorage.setItem(CLIENT_ID_STORAGE_KEY, id);
   }
   return id;
 }
 
-// sessionId sinh mới mỗi phòng họp, hoặc lấy từ URL nếu join qua link
-const sessionId = new URLSearchParams(location.search).get('room')
-  ?? crypto.randomUUID();
+// Canonical route: /room/:roomId
+const roomId = routeParams.roomId;
+const sessionId = roomId;
+const roomName = roomId;
 const clientId = getOrCreateClientId();
 ```
+
+Các invariant frontend:
+
+- `roomId === sessionId === roomName`.
+- Một browser giữ một `clientId` ổn định qua reload.
+- Khi gọi LiveKit token, `participantName === clientId`.
+- Transcript phải giữ `roomId`, thứ tự, timing và draft/final status. Vì server
+  chưa gửi sequence/timing, frontend tạm derive hai giá trị này khi nhận event.
 
 ### 2.4 Transcript integration (Socket.IO)
 
 #### 2.4.1 Kết nối
 
 ```typescript
-import { io, Socket } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
 
-const socket: Socket = io('https://api-hackathon.dangpham.id.vn/audio', {
+const socket: Socket = io(`${import.meta.env.VITE_API_URL}/audio`, {
   query: {
     sessionId,
     clientId,
@@ -138,13 +165,16 @@ socket.on('connect_error', (err) => console.error('Connect failed:', err));
 | `speaker.switch` | `{ speaker: 'vi' \| 'en' }` | Khi user đổi ngôn ngữ đang nói |
 | `session.end` | (không payload) | Khi user bấm "Kết thúc meeting" |
 
-⚠️ **CHỈ BẮT ĐẦU gửi `audio.chunk` sau khi nhận `session.ready`**. Nếu gửi sớm hơn, chunk bị drop vì backend chưa kịp mở kết nối AI.
+⚠️ **Chưa bật gửi `audio.chunk` trong frontend hiện tại.** Backend cần phát
+một event AI-ready sau khi bridge WebSocket thật sự mở. Chỉ dựa vào
+`session.ready` hiện tại chưa đủ an toàn vì event này được phát trước callback
+`aiWs.on('open')`.
 
 #### 2.4.3 Events bạn PHẢI listen
 
 | Event | Payload | Xử lý UI |
 |-------|---------|----------|
-| `session.ready` | `{ clientId, sessionId }` | Enable nút mic, chuyển trạng thái "ready" |
+| `session.ready` | `{ clientId, sessionId }` | Đánh dấu `gateway-connected`; chưa được coi là AI-ready |
 | `stt.partial` | `{ text, speaker, utteranceId }` | Hiện text nhạt màu, cùng `utteranceId` thì **replace** |
 | `stt.final` | `{ text, speaker, utteranceId }` | Chốt câu nguồn màu đen, tạo entry mới trong danh sách utterance |
 | `translate.token` | `{ token, utteranceId }` | Append token vào cột đích (streaming) |
@@ -152,165 +182,81 @@ socket.on('connect_error', (err) => console.error('Connect failed:', err));
 | `session.ended` | (không payload) | Disable mic, hiện nút "Export" (nếu có) |
 | `error` | `{ code, message }` | Toast đỏ |
 
-**Broadcast note:** cả 4 event transcript được broadcast tới **TẤT CẢ client trong room**. Ai cũng thấy transcript của người đang nói. Không phải chỉ người nói mới thấy.
+**Broadcast note:** cả 4 event transcript được broadcast tới **TẤT CẢ client
+trong room**. Ai cũng thấy transcript của người đang nói. Không phải chỉ người
+nói mới thấy.
+
+Frontend đã định nghĩa các schema trên trong `src/types/realtime.ts`. Cả
+deterministic demo và adapter Socket.IO tương lai phải đưa event qua cùng reducer
+thuần `applyRealtimeTranscriptEvent` trong `src/lib/realtimeEvents.ts`; không
+duy trì hai state machine khác nhau.
 
 #### 2.4.4 State machine 1 utterance
 
 ```
-[stt.partial] × N   → cập nhật live source text (replace, không append)
-[stt.final]  × 1    → chốt source, status = 'translating'
-[translate.token] × N → append vào target text
-[translate.done]  × 1  → chốt target, status = 'done'
+[stt.partial] × N     → replace originalText, status = transcribing
+[stt.final] × 1       → chốt originalText, status = draft
+[translate.token] × N → append translatedText, status = draft
+[translate.done] × 1  → replace bản cuối, status = final, set endedAt
 ```
 
-**Ví dụ state:**
-
-```typescript
-type Utterance = {
-  id: string;           // utteranceId từ backend
-  speaker: 'vi' | 'en';
-  sourceText: string;   // stt.final
-  partialSource?: string; // stt.partial (đang gõ)
-  targetText: string;   // build dần từ translate.token
-  status: 'transcribing' | 'translating' | 'done';
-  timestamp: number;
-};
-
-const utterances = new Map<string, Utterance>();
-
-socket.on('stt.partial', ({ text, speaker, utteranceId }) => {
-  const utt = utterances.get(utteranceId) ?? {
-    id: utteranceId,
-    speaker,
-    sourceText: '',
-    targetText: '',
-    status: 'transcribing',
-    timestamp: Date.now(),
-  };
-  utt.partialSource = text;
-  utterances.set(utteranceId, utt);
-});
-
-socket.on('stt.final', ({ text, speaker, utteranceId }) => {
-  const utt = utterances.get(utteranceId);
-  if (utt) {
-    utt.sourceText = text;
-    utt.partialSource = undefined;
-    utt.status = 'translating';
-  }
-});
-
-socket.on('translate.token', ({ token, utteranceId }) => {
-  const utt = utterances.get(utteranceId);
-  if (utt) utt.targetText += token;
-});
-
-socket.on('translate.done', ({ fullText, utteranceId }) => {
-  const utt = utterances.get(utteranceId);
-  if (utt) {
-    utt.targetText = fullText;
-    utt.status = 'done';
-  }
-});
-```
+Frontend lưu một normalized `ConversationTurn` thay vì một state song song riêng
+cho Socket.IO. Turn map `utteranceId` từ event vào field `id`, đồng thời giữ
+`roomId`,
+`sequenceNumber`, participant/speaker identity, source/target language,
+`startedAt`, `endedAt`, original/translated text và status. Event có cùng
+`utteranceId` cập nhật đúng turn; không tự tạo turn từ một orphan
+`translate.token`.
 
 #### 2.4.5 Capture audio 16kHz PCM
 
-Browser mặc định cho mic 44.1kHz stereo. Whisper cần **16kHz mono Int16 raw PCM**. Cần AudioWorklet để convert.
+Contract backend yêu cầu **PCM signed Int16 little-endian, 16 kHz, mono**.
+Browser thường capture ở sample rate thiết bị (thường 44.1 hoặc 48 kHz), và
+constraint `sampleRate: 16000` chỉ là yêu cầu, không đảm bảo kết quả.
 
-**File `public/pcm-worklet.js`:**
+Audio adapter cần:
 
-```javascript
-class PCMProcessor extends AudioWorkletProcessor {
-  process(inputs) {
-    const ch = inputs[0]?.[0];
-    if (!ch) return true;
+1. Xin một `MediaStream` audio và dùng chung cho LiveKit + transcript pipeline.
+2. Đọc sample rate thực tế từ `AudioContext`.
+3. Downmix về mono và resample thật sự về 16 kHz trong AudioWorklet.
+4. Convert Float32 sang signed Int16 little-endian.
+5. Buffer thành chunk khoảng 200 ms (3,200 samples / 6,400 bytes) trước khi emit.
+6. Không connect worklet ra destination để tránh local echo.
+7. Stop tracks, disconnect nodes, close context và ngừng emit khi mute/unmount.
 
-    // Float32 [-1..1] → Int16 [-32768..32767]
-    const int16 = new Int16Array(ch.length);
-    for (let i = 0; i < ch.length; i++) {
-      const s = Math.max(-1, Math.min(1, ch[i]));
-      int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-    }
-    this.port.postMessage(int16.buffer, [int16.buffer]);
-    return true;
-  }
-}
-registerProcessor('pcm-processor', PCMProcessor);
-```
+Phải kiểm thử ít nhất với input 44.1 kHz và 48 kHz; chỉ đổi kiểu Float32 sang
+Int16 mà không resample là sai contract.
 
-**Hook capture:**
-
-```typescript
-async function startRecording(socket: Socket) {
-  const ctx = new AudioContext({ sampleRate: 16000 });
-  await ctx.audioWorklet.addModule('/pcm-worklet.js');
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      sampleRate: 16000,
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
-
-  const source = ctx.createMediaStreamSource(stream);
-  const worklet = new AudioWorkletNode(ctx, 'pcm-processor');
-
-  worklet.port.onmessage = (e) => {
-    socket.emit('audio.chunk', e.data);  // ArrayBuffer binary
-  };
-
-  source.connect(worklet);
-  // Không connect ra destination (không nghe lại tiếng mình)
-
-  return {
-    stop: () => {
-      stream.getTracks().forEach((t) => t.stop());
-      ctx.close();
-    },
-  };
-}
-```
-
-⚠️ **Lưu ý về xung đột mic với LiveKit:** LiveKit cũng cầm mic. Có 2 cách xử lý:
-
-**Cách 1 — Share MediaStream (khuyến nghị):**
-
-```typescript
-// Lấy stream 1 lần, dùng cho cả 2
-const stream = await navigator.mediaDevices.getUserMedia({
-  audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true },
-});
-
-// LiveKit: publish stream
-await room.localParticipant.publishTrack(stream.getAudioTracks()[0]);
-
-// AudioWorklet: capture để gửi transcript
-const source = ctx.createMediaStreamSource(stream);
-// ...
-```
-
-**Cách 2 — 2 getUserMedia calls riêng:**
-Browser share device, không xin quyền 2 lần. Đơn giản nhưng có thể có echo.
+⚠️ **LiveKit và transcript phải dùng chung một `MediaStream`.** Không gọi
+`getUserMedia()` hai lần cho cùng microphone. Media track gốc được publish qua
+LiveKit; một nhánh Web Audio đọc cùng stream để resample và gửi transcript.
+Mute/unmute cần điều phối cả publish state và việc emit PCM, nhưng chỉ owner của
+media adapter mới được stop track.
 
 ### 2.5 Video call integration (LiveKit)
 
 #### 2.5.1 Lấy token từ NestJS
 
 ```typescript
-const res = await fetch('https://api-hackathon.dangpham.id.vn/livekit/token', {
+import type {
+  LiveKitTokenRequest,
+  LiveKitTokenResponse,
+} from '@/types/realtime';
+
+const payload: LiveKitTokenRequest = {
+  roomName: sessionId,       // BẮT BUỘC trùng với sessionId Socket.IO
+  participantName: clientId, // BẮT BUỘC trùng với clientId Socket.IO
+};
+
+const res = await fetch(`${import.meta.env.VITE_API_URL}/livekit/token`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    roomName: sessionId,          // BẮT BUỘC trùng với sessionId Socket.IO
-    participantName: clientId,    // BẮT BUỘC trùng với clientId Socket.IO
-  }),
+  body: JSON.stringify(payload),
 });
 
-const { token, url } = await res.json();
+if (!res.ok) throw new Error(`LiveKit token request failed: ${res.status}`);
+
+const { token, url } = (await res.json()) as LiveKitTokenResponse;
 // url = "wss://livekit-hackathon.dangpham.id.vn"
 ```
 
@@ -359,9 +305,12 @@ room.on(RoomEvent.TrackUnsubscribed, (track) => {
 
 #### 2.5.4 Mapping video ↔ transcript
 
-Vì `participant.identity` (LiveKit) === `clientId` (Socket.IO), bạn có thể overlay transcript lên đúng video tile.
-
-**Hiện tại:** event `translate.done` **không có `clientId`** — chỉ có `speaker` (`vi`/`en`). Nếu cần overlay theo participant cụ thể, backend cần thêm field. Bàn với backend nếu cần.
+LiveKit phải dùng `participant.identity === clientId`. Tuy nhiên transcript
+events hiện chỉ có `speaker` (`vi`/`en`) và `utteranceId`, không có `clientId`
+hoặc `participantId`. Vì vậy frontend **chưa thể map transcript vào đúng video
+tile một cách tin cậy**, đặc biệt khi có reconnect hoặc hai người cùng nói.
+Backend cần bổ sung participant identity vào mọi transcript event trước khi bật
+overlay theo người.
 
 ### 2.6 Kết thúc phiên
 
@@ -373,83 +322,110 @@ async function endMeeting() {
 }
 ```
 
-### 2.7 Env cho Next.js (Vercel)
+### 2.7 Env cho Vite
 
-```
-NEXT_PUBLIC_API_URL=https://api-hackathon.dangpham.id.vn
-```
-
-Không cần set `LIVEKIT_URL` — NestJS trả về trong response `/livekit/token`.
-
-### 2.8 Full example (skeleton)
-
-```typescript
-'use client';
-import { useEffect, useRef, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { Room, RoomEvent, Track } from 'livekit-client';
-
-export function MeetingRoom({ sessionId }: { sessionId: string }) {
-  const [utterances, setUtterances] = useState<Map<string, Utterance>>(new Map());
-  const [isReady, setIsReady] = useState(false);
-  const socketRef = useRef<Socket>();
-  const roomRef = useRef<Room>();
-
-  useEffect(() => {
-    const clientId = getOrCreateClientId();
-
-    // [1] Socket.IO transcript
-    const socket = io(`${process.env.NEXT_PUBLIC_API_URL}/audio`, {
-      query: { sessionId, clientId },
-      transports: ['websocket'],
-    });
-    socketRef.current = socket;
-
-    socket.on('session.ready', () => setIsReady(true));
-    socket.on('stt.partial', handleSttPartial);
-    socket.on('stt.final', handleSttFinal);
-    socket.on('translate.token', handleTranslateToken);
-    socket.on('translate.done', handleTranslateDone);
-    socket.on('error', (e) => console.error(e));
-
-    // [2] LiveKit video
-    (async () => {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/livekit/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomName: sessionId, participantName: clientId }),
-      });
-      const { token, url } = await res.json();
-
-      const room = new Room();
-      room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
-      await room.connect(url, token);
-      await room.localParticipant.enableCameraAndMicrophone();
-      roomRef.current = room;
-    })();
-
-    return () => {
-      socket.disconnect();
-      roomRef.current?.disconnect();
-    };
-  }, [sessionId]);
-
-  // ... UI render
-}
+```dotenv
+VITE_API_URL=https://api-hackathon.dangpham.id.vn
 ```
 
-### 2.9 Checklist Frontend
+Chỉ đọc URL qua `import.meta.env.VITE_API_URL`. Không đưa secret vào biến
+`VITE_*` vì mọi giá trị này được bundle xuống browser. Không cần set
+`LIVEKIT_URL` ở frontend — NestJS trả về URL cùng token từ
+`POST /livekit/token`.
 
-- [ ] Install `socket.io-client` + `livekit-client`
-- [ ] Generate + persist `clientId` trong localStorage
-- [ ] Kết nối Socket.IO với query đầy đủ
-- [ ] **Đợi `session.ready` trước khi bắt đầu ghi âm**
-- [ ] AudioWorklet capture PCM 16kHz Int16
-- [ ] Emit `audio.chunk` liên tục 200ms
-- [ ] Listen 4 event transcript, render 2 cột EN/VI
-- [ ] Fetch LiveKit token với `roomName = sessionId`, `participantName = clientId`
-- [ ] Handle LiveKit events: TrackSubscribed, ParticipantDisconnected
-- [ ] Cleanup khi unmount
+### 2.8 Kiến trúc frontend hiện tại
+
+Frontend đang là vertical slice chạy hoàn toàn trong browser:
+
+```text
+React Router
+  └─ page (layout + orchestration)
+      ├─ UI components
+      ├─ typed EN/VI dictionaries
+      └─ Zustand meeting store
+           ├─ deterministic demo events
+           └─ future Socket.IO adapter
+                    │
+                    ▼
+          applyRealtimeTranscriptEvent
+                    │
+                    ▼
+           normalized meeting turns
+```
+
+Các module quan trọng:
+
+| Module | Trách nhiệm |
+|---|---|
+| `src/app/router.tsx` | Route và compatibility redirect |
+| `src/lib/meetingIdentity.ts` | Sinh `roomId`, persist `clientId` |
+| `src/types/realtime.ts` | Contract Socket.IO và LiveKit có type strict |
+| `src/lib/realtimeEvents.ts` | Reducer thuần cho partial/final/token/done |
+| `src/store/meetingStore.ts` | Meeting state, realtime session state và actions |
+| `src/hooks/useDemoSimulation.ts` | Phát deterministic backend-shaped events |
+| `src/i18n` | Typed English/Vietnamese UI copy |
+
+Route đã triển khai:
+
+| Route | Trạng thái |
+|---|---|
+| `/` | Landing |
+| `/create` | Tạo room local và redirect sang setup |
+| `/room/:roomId/setup` | Meeting/device setup dạng prototype |
+| `/room/:roomId` | Live meeting với deterministic transcript |
+| `/room/:roomId/summary` | Summary và export trong browser |
+| `/setup`, `/meeting`, `/summary` | Compatibility redirects |
+
+`/join` và `/room/:roomId/waiting` thuộc P0 trong
+`frontend/REQUIREMENTS.md` nhưng chưa được triển khai. Tài liệu không được mô tả
+hai route này là đã hoàn tất.
+
+### 2.9 State và event invariants
+
+- `stt.partial` replace source text của cùng `utteranceId`.
+- `stt.final` chốt source và đưa turn sang draft/translation.
+- `translate.token` append target text; token không có utterance trước đó bị bỏ
+  qua.
+- `translate.done` thay bằng bản source/translation cuối và chốt `endedAt`.
+- Event đến trễ không được downgrade một turn đã final.
+- `session.ready` chỉ chuyển session state sang `gateway-connected`.
+- `error` giữ payload `{ code, message }` và đánh dấu active turn là failed.
+- UI ưu tiên bản dịch theo ngôn ngữ người tham gia, nhưng vẫn giữ transcript gốc.
+- Mock và production adapter phải dùng chung typed event reducer.
+
+### 2.10 Trạng thái tích hợp và blocker
+
+**Đã có ở frontend:**
+
+- [x] Room-scoped URL và canonical room identity.
+- [x] Stable browser `clientId`.
+- [x] Typed realtime event schemas và deterministic reducer.
+- [x] UI EN/VI, responsive layout, transcript draft/final/failed states.
+- [x] Deterministic mock mode được ghi nhãn rõ, không giả là AI thật.
+
+**Chưa bật production connection:**
+
+- [ ] Cài `socket.io-client` và `livekit-client`.
+- [ ] Socket.IO lifecycle adapter và retry/error UX.
+- [ ] Shared microphone `MediaStream`, LiveKit publish và AudioWorklet PCM.
+- [ ] LiveKit remote track lifecycle và cleanup.
+- [ ] Production env/config validation.
+
+**Backend contract cần xử lý trước khi bật:**
+
+1. `session.ready` phải được phát sau khi AI WebSocket mở, hoặc bổ sung một
+   event AI-ready riêng.
+2. Audio cần tách theo participant/client. Hiện một AI WebSocket dùng chung cho
+   cả room và `speaker.switch` là state cấp session, nên hai client có thể bị
+   trộn audio và giẫm ngôn ngữ của nhau.
+3. Transcript events cần `clientId`/`participantId`, sequence và timing để map
+   đúng video tile, giữ thứ tự và xử lý reconnect.
+4. Thêm `GET /health` vào implementation hoặc sửa contract/monitoring docs.
+5. Credential LiveKit phải được rotate và chuyển khỏi file config được commit;
+   frontend không bao giờ nhận secret.
+
+Cho đến khi các mục trên được giải quyết, frontend giữ deterministic mode và
+không thực hiện backend, LiveKit hay external AI calls.
 
 ---
 
@@ -883,7 +859,7 @@ asyncio.run(test())
 ### 4.1 Sequence diagram meeting 2 người
 
 ```
-Client A (VN)    Client B (SG)    NestJS      LiveKit      FastAPI
+Client A (VN)    Client B (EN)    NestJS      LiveKit      FastAPI
     │                │              │            │            │
     │  [Setup]                                                 │
     │─POST /livekit/token────────────▶            │            │
@@ -891,7 +867,9 @@ Client A (VN)    Client B (SG)    NestJS      LiveKit      FastAPI
     │─room.connect(url, token)──────────────────▶  │           │
     │─socket.io(/audio)───────────────▶            │           │
     │                              openSession()──────────────▶│
-    │◀──'session.ready'──────────────  │                       │
+    │◀──'session.ready'──────────────  │  [gateway ack only]   │
+    │                              ◀── AI WebSocket open ─────│
+    │◀──'ai.ready' (contract cần bổ sung)                      │
     │                                                          │
     │                  [B join tương tự]                       │
     │                │                │                        │
@@ -899,7 +877,8 @@ Client A (VN)    Client B (SG)    NestJS      LiveKit      FastAPI
     │                │◀──{token,url}──                         │
     │                │─room.connect─────▶ (LiveKit)            │
     │                │─socket.io───────▶                       │
-    │                │◀──'session.ready'                       │
+    │                │◀──'session.ready' [gateway ack only]    │
+    │                │◀──'ai.ready' (contract cần bổ sung)     │
     │                │                                         │
     │                │ [Video call auto: A và B thấy nhau qua  │
     │                │  LiveKit — không đụng NestJS]           │
@@ -923,7 +902,7 @@ Client A (VN)    Client B (SG)    NestJS      LiveKit      FastAPI
     │◀──'translate.done'─────────  │  save utterance to store  │
     │                │◀──'translate.done'                      │
     │                                                          │
-    │                │ [B nói tương tự, VN thấy dịch sang EN]  │
+    │                │ [B nói tương tự, A thấy dịch sang VN]   │
     │                                                          │
     │  [A end meeting]                                         │
     │─emit 'session.end'─────────▶                             │
@@ -950,26 +929,22 @@ Client A (VN)    Client B (SG)    NestJS      LiveKit      FastAPI
 
 ---
 
-## PHẦN 5 — NESTJS ĐÃ SỬA/BỔ SUNG
+## PHẦN 5 — TRẠNG THÁI NESTJS ĐÃ XÁC MINH
 
-Trước khi deploy, các fix đã áp dụng:
+Đối chiếu với `realtime-service/src`:
 
-1. **`audio.gateway.ts` — `session.end` handler**: thêm `this.aiBridge.closeSession(sessionId)` để đóng WS AI ngay khi user chủ động kết thúc.
+1. **Đã có:** `session.end` broadcast `session.ended` và gọi
+   `closeSession(sessionId)`.
+2. **Đã có:** namespace Socket.IO `/audio`, websocket-only, cùng các handler
+   `audio.chunk`, `speaker.switch` và `session.end`.
+3. **Đã có:** `POST /livekit/token` nhận `roomName`, `participantName` và trả
+   `{ token, url }`.
+4. **Chưa có:** `GET /health`; root controller hiện chỉ trả `Hello World!`.
+5. **Cần sửa trước tích hợp:** readiness, participant-scoped audio và transcript
+   identity như mục 2.10.
 
-2. **`app.controller.ts` — Health endpoint**: thêm `GET /health` để monitoring/deploy check:
-   ```typescript
-   @Controller()
-   export class AppController {
-     @Get('health')
-     health() {
-       return { status: 'ok', ts: Date.now() };
-     }
-   }
-   ```
-
-3. **Env keys** khớp chính xác giữa `.env` NestJS và `livekit.yaml`.
-
-Không sửa gì khác ở logic core — pipeline transcript giữ nguyên như đã test bằng mock.
+Source code hiện tại là wire behavior thực tế. Khi implementation và tài liệu
+khác nhau, không được giả định phần được mô tả nhưng chưa có code là đã deploy.
 
 ---
 
@@ -982,7 +957,9 @@ Không sửa gì khác ở logic core — pipeline transcript giữ nguyên như
 | `api-hackathon.dangpham.id.vn` | `127.0.0.1:3001` | HTTPS + WSS |
 | `livekit-hackathon.dangpham.id.vn` | `127.0.0.1:7880` | HTTPS + WSS |
 
-Frontend deploy Vercel, không cần subdomain riêng.
+Frontend Vite có thể deploy như static app trên hạ tầng do team chọn. Host phải
+rewrite mọi route `/room/*` về `index.html`; domain production chưa được chốt
+trong repository.
 
 ### 6.2 Firewall
 
@@ -1023,14 +1000,16 @@ LIVEKIT_URL=wss://livekit-hackathon.dangpham.id.vn
 | Triệu chứng | Nguyên nhân | Fix |
 |-------------|-------------|-----|
 | Client connect Socket.IO bị disconnect ngay | Thiếu `sessionId` hoặc `clientId` trong query | Check query string |
-| Client emit audio nhưng không có transcript | Emit trước khi nhận `session.ready` → chunk bị drop | Đợi event `session.ready` |
+| Client emit audio nhưng không có transcript | `session.ready` đến trước khi AI bridge mở nên chunk có thể bị drop | Bổ sung/đợi AI-ready thật sự |
 | `translate.done` xong nhưng export DOCX rỗng | FastAPI thiếu `sourceText` hoặc `speaker` field | Check FastAPI event schema |
 | LiveKit connect fail "invalid token" | Key/secret `.env` không khớp `livekit.yaml` | Verify 2 file khớp chính xác |
 | Video call kết nối nhưng không thấy hình | Firewall chặn UDP 50000-50100 | Mở UFW |
-| WSS "Mixed Content" error trên FE Vercel | LIVEKIT_URL đang là `ws://` | Đổi sang `wss://` |
+| WSS "Mixed Content" error trên frontend HTTPS | LIVEKIT_URL đang là `ws://` | Đổi sang `wss://` |
 | FastAPI crash khi nhận audio | PCM format sai (không phải Int16 16kHz mono) | Client check AudioWorklet convert đúng |
 | Utterance transcript loạn thứ tự | Nhiều `utteranceId` bị trùng | FastAPI sinh unique id mỗi câu |
 
 ---
 
-**Xong. File này là ground truth cho cả 3 team.** Nếu có thay đổi contract event, update file này trước khi code.
+Tài liệu này mô tả intended contract; source của từng service mô tả wire
+behavior hiện tại. Nếu thay đổi contract event, cập nhật cả tài liệu, shared
+types và implementation trong cùng thay đổi.
