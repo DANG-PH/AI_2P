@@ -27,10 +27,15 @@ from rag.engine import RAGEngine
 from session.memory import SessionEntry, SessionManager
 from translation.fast_path import FastPathTranslator
 from translation.quality_path import QualityContext, QualityPathTranslator
-from worker import FINAL_BYTES, PipelineSession
+from worker import PipelineSession, audio_bytes_for_ms
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def pcm_payload(duration_ms: int, amplitude: int = 1200) -> bytes:
+    sample_count = int(16000 * duration_ms / 1000)
+    return (np.ones(sample_count, dtype=np.int16) * amplitude).tobytes()
 
 
 class TensorDict(dict):
@@ -578,6 +583,8 @@ def test_fpt_asr_uses_session_language_and_caches_probe():
 
     assert result.text == "hello"
     assert client.transcriptions.calls[-1]["language"] == "en"
+    assert "speaking English" in client.transcriptions.calls[-1]["prompt"]
+    assert client.transcriptions.calls[-1]["temperature"] == 0.0
 
 
 def test_fpt_asr_accepts_inconclusive_silent_readiness_probe():
@@ -880,7 +887,7 @@ async def _worker_revision_overlap_and_status_events():
     worker_session.fast = make_fast_translator()
     worker_session.quality = InstantQualityTranslator("ROI is 12 percent translated")
     worker_session.rag = RAGEngine(encoder=FakeEncoder(), db=FakeDb())
-    worker_session.audio_buffer.extend((np.ones(FINAL_BYTES // 2, dtype=np.int16) * 32767).tobytes())
+    worker_session.audio_buffer.extend(pcm_payload(1200, amplitude=32767))
 
     await worker_session.emit_partial("u1")
     await worker_session.finalize_utterance("u1")
@@ -900,9 +907,65 @@ def test_worker_combines_multiple_audio_segments():
     worker_session = PipelineSession(FakeWs(), "room", "client")
     worker_session.audio = make_split_audio_pipeline()
     worker_session.asr = ASREngine(model=FakeWhisperModel())
-    combined = worker_session._transcribe(np.ones(FINAL_BYTES // 2, dtype=np.int16).tobytes(), "u1")
+    combined = worker_session._transcribe(pcm_payload(1200), "u1")
     assert combined.text == "xin chao KPI xin chao KPI"
     assert combined.segment_id == "u1"
+
+
+def test_worker_endpointing_keeps_sentence_until_silence():
+    asyncio.run(_worker_endpointing_keeps_sentence_until_silence())
+
+
+async def _worker_endpointing_keeps_sentence_until_silence():
+    worker_session = PipelineSession(FakeWs(), "room-endpoint", "client-endpoint")
+    worker_session.ready = True
+    worker_session.speaker = "en"
+    worker_session.audio = make_audio_pipeline()
+    worker_session.asr = ASREngine(
+        model=SequenceWhisperModel(
+            ["hello", "hello how are you doing today"],
+        ),
+    )
+    worker_session.fast = make_fast_translator()
+    worker_session.quality = InstantQualityTranslator(
+        "xin chào hôm nay bạn thế nào",
+    )
+    worker_session.rag = RAGEngine(encoder=FakeEncoder(), db=FakeDb())
+
+    speech = pcm_payload(200)
+    silence = pcm_payload(200, amplitude=0)
+
+    for _index in range(6):
+        await worker_session.handle_audio(speech)
+
+    assert not any(
+        event["type"] == "stt.final"
+        for event in worker_session.ws.events
+    )
+
+    # A pause shorter than 700 ms remains part of the same utterance.
+    for _index in range(3):
+        await worker_session.handle_audio(silence)
+    assert not any(
+        event["type"] == "stt.final"
+        for event in worker_session.ws.events
+    )
+
+    for _index in range(2):
+        await worker_session.handle_audio(speech)
+    for _index in range(4):
+        await worker_session.handle_audio(silence)
+
+    finals = [
+        event
+        for event in worker_session.ws.events
+        if event["type"] == "stt.final"
+    ]
+    assert len(finals) == 1
+    assert finals[0]["text"] == "hello how are you doing today"
+    assert finals[0]["sourceLang"] == "en"
+    assert worker_session.utterance_count == 1
+    assert worker_session.audio_buffer == bytearray()
 
 
 def test_websocket_worker_contract_with_injected_models():
@@ -967,8 +1030,16 @@ async def _websocket_worker_contract():
         assert ready["languagePair"] == "vi-en"
         assert ready["externalApisProbed"] is True
 
-        samples = np.ones(FINAL_BYTES // 2, dtype=np.int16) * 1200
-        await _client_send_frame(writer, samples.tobytes(), opcode=0x2)
+        await _client_send_frame(
+            writer,
+            pcm_payload(1200),
+            opcode=0x2,
+        )
+        await _client_send_frame(
+            writer,
+            pcm_payload(800, amplitude=0),
+            opcode=0x2,
+        )
 
         while not any(event.get("type") == "translate.done" for event in events):
             events.append(await _client_receive_json(reader))
@@ -1067,6 +1138,7 @@ if __name__ == "__main__":
     test_quality_network_failure_emits_status_and_uses_fast_path()
     test_worker_revision_overlap_and_status_events()
     test_worker_combines_multiple_audio_segments()
+    test_worker_endpointing_keeps_sentence_until_silence()
     test_websocket_worker_contract_with_injected_models()
     test_imports()
     print("All smoke tests passed.")

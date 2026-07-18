@@ -39,9 +39,29 @@ from translation.quality_path import QualityContext, QualityPathTranslator
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 SAMPLE_RATE = 16000
 BYTES_PER_SAMPLE = 2
-PARTIAL_BYTES = int(SAMPLE_RATE * BYTES_PER_SAMPLE * 0.8)
-FINAL_BYTES = int(SAMPLE_RATE * BYTES_PER_SAMPLE * 1.2)
 LOGGER = logging.getLogger("vienmeet.ai")
+
+
+def audio_bytes_for_ms(milliseconds: float) -> int:
+    return max(
+        BYTES_PER_SAMPLE,
+        int(SAMPLE_RATE * BYTES_PER_SAMPLE * milliseconds / 1000),
+    )
+
+
+def bounded_env_float(
+    name: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    if not np.isfinite(value):
+        return default
+    return min(maximum, max(minimum, value))
 
 
 # Shared model/API instances are warmed once before the worker starts listening.
@@ -229,6 +249,55 @@ class PipelineSession:
         self.partial_sent = False
         self.partial_segment = None
         self.last_revision = None
+        self.speech_started = False
+        self.speech_bytes = 0
+        self.trailing_silence_bytes = 0
+        self.partial_bytes = audio_bytes_for_ms(
+            bounded_env_float(
+                "AUDIO_ENDPOINT_PARTIAL_MS",
+                1000,
+                500,
+                5000,
+            ),
+        )
+        self.endpoint_silence_bytes = audio_bytes_for_ms(
+            bounded_env_float(
+                "AUDIO_ENDPOINT_SILENCE_MS",
+                700,
+                300,
+                3000,
+            ),
+        )
+        self.minimum_speech_bytes = audio_bytes_for_ms(
+            bounded_env_float(
+                "AUDIO_ENDPOINT_MIN_SPEECH_MS",
+                200,
+                100,
+                2000,
+            ),
+        )
+        self.max_utterance_bytes = audio_bytes_for_ms(
+            bounded_env_float(
+                "AUDIO_ENDPOINT_MAX_MS",
+                15000,
+                3000,
+                30000,
+            ),
+        )
+        self.pre_roll_bytes = audio_bytes_for_ms(
+            bounded_env_float(
+                "AUDIO_ENDPOINT_PREROLL_MS",
+                300,
+                0,
+                1000,
+            ),
+        )
+        self.endpoint_rms_threshold = bounded_env_float(
+            "AUDIO_ENDPOINT_RMS",
+            0.008,
+            0.0005,
+            0.2,
+        )
         self.overlap_buffer: list[dict[str, Any]] = []
         self.overlap_buffer_limit = int(os.getenv("OVERLAP_BUFFER_LIMIT", "20"))
         self._last_status_key = None
@@ -272,6 +341,7 @@ class PipelineSession:
 
         message_type = message.get("type")
         if message_type == "session.close":
+            await self.flush_pending_utterance()
             try:
                 self.rag.add_session_transcript(self.session.generate_minutes(), self.session_id)
                 self._export_session()
@@ -282,11 +352,14 @@ class PipelineSession:
         if message_type == "speaker.switch":
             speaker = message.get("speaker")
             if speaker in ("vi", "en"):
+                if speaker != self.speaker:
+                    await self.flush_pending_utterance()
                 self.speaker = speaker
             return True
 
         if message_type == "session.init":
             self.ready = False
+            self._discard_pending_audio()
             config = message.get("config") if isinstance(message.get("config"), dict) else {}
             self.language_pair = str(config.get("languagePair") or self.language_pair)
             configured_speaker = config.get("speaker")
@@ -380,14 +453,92 @@ class PipelineSession:
             return
 
         await self._track_mic_signal(payload)
-        self.audio_buffer.extend(payload)
-        utterance_id = self._utterance_id()
+        chunk_has_speech = self._chunk_has_speech(payload)
 
-        if not self.partial_sent and len(self.audio_buffer) >= PARTIAL_BYTES:
+        self.audio_buffer.extend(payload)
+        if not self.speech_started:
+            if not chunk_has_speech:
+                self._trim_to_pre_roll()
+                return
+            self.speech_started = True
+
+        if chunk_has_speech:
+            self.speech_bytes += len(payload)
+            self.trailing_silence_bytes = 0
+        else:
+            self.trailing_silence_bytes += len(payload)
+
+        utterance_id = self._utterance_id()
+        reached_silence = (
+            self.trailing_silence_bytes >= self.endpoint_silence_bytes
+        )
+        reached_maximum = len(self.audio_buffer) >= self.max_utterance_bytes
+
+        if reached_silence:
+            if self.speech_bytes >= self.minimum_speech_bytes:
+                await self.finalize_utterance(utterance_id)
+            else:
+                self._discard_pending_audio()
+            return
+
+        if reached_maximum:
+            await self.finalize_utterance(utterance_id)
+            return
+
+        if (
+            not self.partial_sent
+            and self.speech_bytes >= self.partial_bytes
+        ):
             await self.emit_partial(utterance_id)
 
-        if len(self.audio_buffer) >= FINAL_BYTES:
-            await self.finalize_utterance(utterance_id)
+    async def flush_pending_utterance(self) -> None:
+        if (
+            self.speech_started
+            and self.speech_bytes >= self.minimum_speech_bytes
+            and self.audio_buffer
+        ):
+            await self.finalize_utterance(self._utterance_id())
+        else:
+            self._discard_pending_audio()
+
+    def _chunk_has_speech(self, payload: bytes) -> bool:
+        usable_length = len(payload) - (len(payload) % BYTES_PER_SAMPLE)
+        if usable_length <= 0:
+            return False
+
+        samples = np.frombuffer(
+            payload[:usable_length],
+            dtype=np.int16,
+        ).astype(np.float32)
+        if samples.size == 0:
+            return False
+
+        normalized = samples / 32768.0
+        rms = float(np.sqrt(np.mean(np.square(normalized))))
+        return rms >= self.endpoint_rms_threshold
+
+    def _trim_to_pre_roll(self) -> None:
+        if self.pre_roll_bytes <= 0:
+            self.audio_buffer.clear()
+            return
+        if len(self.audio_buffer) > self.pre_roll_bytes:
+            del self.audio_buffer[:-self.pre_roll_bytes]
+
+    def _discard_pending_audio(self) -> None:
+        self.audio_buffer.clear()
+        self.partial_sent = False
+        self.partial_segment = None
+        self.last_revision = None
+        self.speech_started = False
+        self.speech_bytes = 0
+        self.trailing_silence_bytes = 0
+
+    def _reset_endpoint_state(self) -> None:
+        self.audio_buffer.clear()
+        self.partial_sent = False
+        self.speech_started = False
+        self.speech_bytes = 0
+        self.trailing_silence_bytes = 0
 
     def _preflight_session(self) -> tuple[dict[str, str | None], list[str]]:
         def log_optional_error(capability: str, error: Exception) -> None:
@@ -433,15 +584,18 @@ class PipelineSession:
 
     async def finalize_utterance(self, utterance_id: str) -> None:
         raw = bytes(self.audio_buffer)
-        self.audio_buffer.clear()
-        self.partial_sent = False
+        self._reset_endpoint_state()
         self.utterance_count += 1
 
         try:
             asr_segment = self._transcribe(raw, utterance_id)
             if not asr_segment or not asr_segment.text:
+                self.partial_segment = None
+                self.last_revision = None
                 return
         except Exception as error:
+            self.partial_segment = None
+            self.last_revision = None
             await self._send_pipeline_error(error)
             return
 

@@ -29,6 +29,12 @@ AI_WS_HOST=127.0.0.1
 AI_WS_PORT=8765
 
 AUDIO_VAD=silero
+AUDIO_ENDPOINT_PARTIAL_MS=1000
+AUDIO_ENDPOINT_SILENCE_MS=700
+AUDIO_ENDPOINT_MIN_SPEECH_MS=200
+AUDIO_ENDPOINT_MAX_MS=15000
+AUDIO_ENDPOINT_PREROLL_MS=300
+AUDIO_ENDPOINT_RMS=0.008
 
 FPT_BASE_URL=https://mkp-api.fptcloud.com
 FPT_API_KEY=replace-with-your-key
@@ -59,6 +65,13 @@ reranker đều dùng lại key này. Không cần lặp key ở
 Quality translation dùng `FPT_AI_FACTORY_MODEL`. Khi quality path lỗi hoặc
 timeout, worker mới gọi tuần tự `FPT_FAST_MT_MODEL`; hai model không còn được
 gọi song song cho cùng một lượt nói.
+
+Frontend tiếp tục gửi PCM theo chunk 200 ms. Worker dùng RMS nhẹ để xác định
+endpoint nhưng vẫn dùng Silero để lọc vùng speech trước ASR: partial bắt đầu
+sau khoảng 1 giây, một khoảng nghỉ dưới 700 ms vẫn thuộc cùng câu, và chỉ phát
+`stt.final` sau 700 ms im lặng hoặc khi câu đạt giới hạn 15 giây. `speaker=en`
+được truyền thành `language=en` và prompt tiếng Anh cho FPT ASR; `speaker=vi`
+được xử lý tương tự cho tiếng Việt.
 
 ### Realtime service
 

@@ -211,7 +211,11 @@ class ASREngine:
         }
         if language:
             options["language"] = language
-        prompt = self._prompt(glossary or {}, acronym_table or {})
+        prompt = self._prompt(
+            glossary or {},
+            acronym_table or {},
+            language=language,
+        )
         if prompt:
             options["initial_prompt"] = prompt
 
@@ -249,12 +253,17 @@ class ASREngine:
 
         from config.fpt_models import MODELS as FPT
         model_name = os.getenv("FPT_ASR_MODEL", FPT["asr"])
-        prompt = self._prompt(glossary or {}, acronym_table or {})
+        prompt = self._prompt(
+            glossary or {},
+            acronym_table or {},
+            language=language,
+        )
 
         kwargs = {
             "model": model_name,
             "file": ("speech.wav", wav_bytes, "audio/wav"),
             "response_format": "verbose_json",
+            "temperature": 0.0,
             "timeout": timeout,
         }
         if language:
@@ -282,8 +291,25 @@ class ASREngine:
             "language": getattr(response, "language", language or "unknown"),
         }
 
-    def _prompt(self, glossary: dict, acronym_table: dict) -> str:
-        parts = [self.initial_prompt] if self.initial_prompt else []
+    def _prompt(
+        self,
+        glossary: dict,
+        acronym_table: dict,
+        language: str | None = None,
+    ) -> str:
+        language_prompts = {
+            "en": (
+                "English meeting transcript. The speaker is speaking English. "
+                "Transcribe the audio in English."
+            ),
+            "vi": (
+                "Bản ghi cuộc họp tiếng Việt. Người nói đang nói tiếng Việt. "
+                "Hãy chép lại âm thanh bằng tiếng Việt."
+            ),
+        }
+        parts = [language_prompts[language]] if language in language_prompts else []
+        if self.initial_prompt:
+            parts.append(self.initial_prompt)
         if glossary:
             terms = ", ".join(f"{key}={value}" for key, value in list(glossary.items())[:40])
             parts.append(f"Meeting glossary: {terms}")
