@@ -3,6 +3,7 @@ import {
   ConnectionQualityIndicator,
   GridLayout,
   ParticipantName,
+  ParticipantPlaceholder,
   ParticipantTile,
   TrackMutedIndicator,
   VideoTrack,
@@ -15,7 +16,6 @@ import { MonitorUp } from 'lucide-react'
 import { Track } from 'livekit-client'
 
 import { useTranslation } from '@/hooks/useTranslation'
-import { getInitials } from '@/lib/formatters'
 
 type MediaKind = 'microphone' | 'camera' | 'screen'
 
@@ -72,6 +72,7 @@ export function LiveKitMeetingStage({
     localParticipant,
     microphoneEnabled,
     onMediaStateRejected,
+
   ])
 
   useEffect(() => {
@@ -145,9 +146,11 @@ function LocalizedParticipantTile() {
   const isScreenShare = trackRef.source === Track.Source.ScreenShare
   const participantLabel =
     trackRef.participant.name || trackRef.participant.identity
-  const hasVideo =
+  const hasUsableVideo =
     isTrackReference(trackRef) &&
-    trackRef.publication?.kind === Track.Kind.Video
+    trackRef.publication?.kind === Track.Kind.Video &&
+    !trackRef.publication.isMuted &&
+    Boolean(trackRef.publication.track)
 
   return (
     <ParticipantTile
@@ -159,13 +162,14 @@ function LocalizedParticipantTile() {
       )}
       className="overflow-hidden rounded-[10px]"
     >
-      {hasVideo ? (
+      {hasUsableVideo ? (
         <VideoTrack trackRef={trackRef} />
       ) : (
         <div className="absolute inset-0 grid place-items-center bg-video-tile">
-          <span className="grid size-20 place-items-center rounded-full bg-[#34373d] text-xl font-semibold text-stage-ink ring-1 ring-white/8">
-            {getInitials(participantLabel)}
-          </span>
+          <ParticipantPlaceholder
+            className="h-full w-auto p-[10%]"
+            aria-hidden="true"
+          />
         </div>
       )}
 

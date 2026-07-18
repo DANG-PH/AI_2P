@@ -45,6 +45,9 @@ export default function LiveMeetingPage() {
   const microphoneEnabled = useMeetingStore(
     (state) => state.microphoneEnabled,
   )
+  const cameraEnabled = useMeetingStore(
+    (state) => state.cameraEnabled,
+  )
   const realtimeStatus = useMeetingStore(
     (state) => state.realtimeSession.status,
   )
@@ -56,6 +59,12 @@ export default function LiveMeetingPage() {
   )
   const toggleMicrophone = useMeetingStore(
     (state) => state.toggleMicrophone,
+  )
+  const setCameraEnabled = useMeetingStore(
+    (state) => state.setCameraEnabled,
+  )
+  const toggleCamera = useMeetingStore(
+    (state) => state.toggleCamera,
   )
   const setConversationMode = useMeetingStore(
     (state) => state.setConversationMode,
@@ -69,7 +78,6 @@ export default function LiveMeetingPage() {
   const [contextOpen, setContextOpen] = useState(false)
   const [noteDialogOpen, setNoteDialogOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
-  const [cameraEnabled, setCameraEnabled] = useState(true)
   const [captionsEnabled, setCaptionsEnabled] = useState(true)
   const [sharingEnabled, setSharingEnabled] = useState(false)
   const [microphoneTrack, setMicrophoneTrack] =
@@ -201,7 +209,7 @@ export default function LiveMeetingPage() {
         setSharingEnabled(false)
       }
     },
-    [setMicrophoneEnabled],
+    [setCameraEnabled, setMicrophoneEnabled],
   )
 
   const handleLiveKitConnected = useCallback(() => {
@@ -360,9 +368,7 @@ export default function LiveMeetingPage() {
         conversationVisible={captionsEnabled}
         mediaControlsDisabled={!livekitConnected}
         onToggleMicrophone={toggleMicrophone}
-        onToggleCamera={() =>
-          setCameraEnabled((enabled) => !enabled)
-        }
+        onToggleCamera={toggleCamera}
         onToggleCaptions={() =>
           setCaptionsEnabled((enabled) => !enabled)
         }

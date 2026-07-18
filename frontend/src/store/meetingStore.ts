@@ -25,6 +25,7 @@ import type {
 export interface MeetingStoreState {
   meeting: Meeting
   microphoneEnabled: boolean
+  cameraEnabled: boolean
   microphoneTestStatus: MicrophoneTestStatus
   audioInputLevel: number
   noiseLevel: NoiseLevel
@@ -42,6 +43,8 @@ export interface MeetingStoreActions {
   setMicrophone: (microphoneId: string) => void
   setMicrophoneEnabled: (enabled: boolean) => void
   toggleMicrophone: () => void
+  setCameraEnabled: (enabled: boolean) => void
+  toggleCamera: () => void
   setMicrophoneTestStatus: (status: MicrophoneTestStatus) => void
   setAudioInputLevel: (level: number) => void
   setNoiseLevel: (level: NoiseLevel) => void
@@ -94,6 +97,7 @@ const calculateDurationSeconds = (
 const createInitialStoreState = (): MeetingStoreState => ({
   meeting: createInitialMeeting(),
   microphoneEnabled: true,
+  cameraEnabled: false,
   microphoneTestStatus: 'idle',
   audioInputLevel: 0,
   noiseLevel: 'low',
@@ -236,6 +240,16 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
   toggleMicrophone: () => {
     set((state) => ({
       microphoneEnabled: !state.microphoneEnabled,
+    }))
+  },
+
+  setCameraEnabled: (cameraEnabled) => {
+    set({ cameraEnabled })
+  },
+
+  toggleCamera: () => {
+    set((state) => ({
+      cameraEnabled: !state.cameraEnabled,
     }))
   },
 
@@ -482,6 +496,7 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
         durationSeconds: 0,
       },
       microphoneEnabled: true,
+      cameraEnabled: false,
       microphoneTestStatus: 'idle',
       audioInputLevel: 0,
       activeTurnId: null,

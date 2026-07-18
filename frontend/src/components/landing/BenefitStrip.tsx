@@ -1,7 +1,7 @@
 import {
+  AudioWaveform,
   BookOpenText,
-  RadioTower,
-  ShieldCheck,
+  Split,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -18,7 +18,7 @@ interface Benefit {
 const benefits: readonly Benefit[] = [
   {
     index: '01',
-    icon: RadioTower,
+    icon: AudioWaveform,
     titleKey: 'landing.benefitRealtimeTitle',
     descriptionKey: 'landing.benefitRealtimeDescription',
   },
@@ -30,9 +30,9 @@ const benefits: readonly Benefit[] = [
   },
   {
     index: '03',
-    icon: ShieldCheck,
-    titleKey: 'landing.benefitPrivacyTitle',
-    descriptionKey: 'landing.benefitPrivacyDescription',
+    icon: Split,
+    titleKey: 'landing.benefitChannelsTitle',
+    descriptionKey: 'landing.benefitChannelsDescription',
   },
 ]
 
@@ -41,43 +41,51 @@ export function BenefitStrip() {
 
   return (
     <section
-      aria-labelledby="how-it-works-title"
-      className="scroll-mt-24 border-y border-line bg-panel"
-      id="how-it-works"
+      aria-labelledby="benefits-title"
+      className="bg-[#eef2fa] px-5 py-18 sm:px-6 lg:px-8 lg:py-24"
+      id="benefits"
     >
-      <h2 className="sr-only" id="how-it-works-title">
-        {t('landing.benefitsHeading')}
-      </h2>
+      <div className="mx-auto max-w-[1240px]">
+        <div className="grid gap-6 border-b border-ink/15 pb-8 md:grid-cols-[0.8fr_1.2fr] md:items-end md:gap-12">
+          <p className="text-[0.6875rem] font-bold tracking-[0.15em] text-primary uppercase">
+            {t('landing.benefitsEyebrow')}
+          </p>
+          <h2
+            className="landing-display max-w-[18ch] text-[clamp(2.35rem,4vw,3.8rem)] leading-[0.98] font-medium tracking-[-0.045em] text-ink"
+            id="benefits-title"
+          >
+            {t('landing.benefitsHeading')}
+          </h2>
+        </div>
 
-      <div className="mx-auto grid max-w-[1180px] md:grid-cols-3">
-        {benefits.map((benefit) => {
-          const Icon = benefit.icon
+        <div className="grid md:grid-cols-3">
+          {benefits.map((benefit) => {
+            const Icon = benefit.icon
 
-          return (
-            <article
-              className="group grid grid-cols-[2.5rem_1fr] gap-3 border-b border-line px-5 py-7 last:border-b-0 sm:px-6 md:border-r md:border-b-0 md:last:border-r-0 lg:px-8 lg:py-9"
-              key={benefit.index}
-            >
-              <span className="pt-0.5 text-[0.625rem] font-bold tracking-[0.16em] text-muted">
-                {benefit.index}
-              </span>
-              <div>
-                <div className="flex items-center gap-2.5">
+            return (
+              <article
+                className="group border-b border-ink/15 py-8 last:border-b-0 md:border-r md:border-b-0 md:px-7 md:first:pl-0 md:last:border-r-0 md:last:pr-0 lg:py-10"
+                key={benefit.index}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold tracking-[0.15em] text-muted">
+                    {benefit.index}
+                  </span>
                   <Icon
                     aria-hidden="true"
-                    className="size-4 text-primary transition-transform duration-300 ease-out group-hover:-translate-y-0.5"
+                    className="size-5 text-primary transition-transform duration-300 ease-out group-hover:-translate-y-1"
                   />
-                  <h3 className="text-sm font-semibold text-ink">
-                    {t(benefit.titleKey)}
-                  </h3>
                 </div>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-muted">
+                <h3 className="mt-12 max-w-[14ch] text-xl font-semibold tracking-[-0.03em] text-ink">
+                  {t(benefit.titleKey)}
+                </h3>
+                <p className="mt-3 max-w-sm text-sm leading-6 text-muted-strong">
                   {t(benefit.descriptionKey)}
                 </p>
-              </div>
-            </article>
-          )
-        })}
+              </article>
+            )
+          })}
+        </div>
       </div>
     </section>
   )

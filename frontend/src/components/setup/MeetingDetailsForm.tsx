@@ -13,8 +13,6 @@ import { cn } from '@/lib/utils'
 import { useMeetingStore } from '@/store/meetingStore'
 import type { ConversationMode } from '@/types/meeting'
 
-import { MicrophoneTest } from './MicrophoneTest'
-
 export const MEETING_SETUP_FORM_ID = 'meeting-setup-form'
 
 type RequiredField = 'title' | 'userName'
@@ -229,14 +227,14 @@ export function MeetingDetailsForm({
             />
           </FormField>
 
-          <fieldset className="grid gap-2">
-            <legend className="text-sm font-semibold tracking-[-0.01em] text-ink-soft">
+          <fieldset className="min-w-0">
+            <legend className="text-sm leading-5 font-semibold tracking-[-0.01em] text-ink-soft">
               {t('details.yourLanguage')}
               <span className="ml-1 text-danger" aria-hidden="true">
                 *
               </span>
             </legend>
-            <div className="grid h-12 grid-cols-2 gap-2">
+            <div className="mt-2 grid h-12 grid-cols-2 gap-2">
               <button
                 type="button"
                 aria-pressed={userLanguage === 'vi'}
@@ -329,9 +327,6 @@ export function MeetingDetailsForm({
         </section>
       )}
 
-      <div className="mt-8">
-        <MicrophoneTest />
-      </div>
     </form>
   )
 }

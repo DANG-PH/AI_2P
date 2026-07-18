@@ -35,6 +35,15 @@ export const router = createBrowserRouter([
     },
   },
   {
+    path: '/room/:roomId/prejoin',
+    lazy: async () => {
+      const { default: Component } = await import(
+        '@/pages/PreJoinPage'
+      )
+      return { Component }
+    },
+  },
+  {
     path: '/room/:roomId',
     lazy: async () => {
       const { default: Component } = await import(

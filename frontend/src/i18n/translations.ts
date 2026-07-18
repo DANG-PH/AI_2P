@@ -36,10 +36,10 @@ const en = {
   'landing.headlineSecond': 'One conversation.',
   'landing.description':
     'Near real-time Vietnamese–English interpretation for natural and uninterrupted business meetings.',
+  'landing.exploreHow': 'See how it works',
+  'landing.independentAudio': 'Separate audio channels',
   'landing.joinEyebrow': 'Join an existing room',
   'landing.joinTitle': 'Enter a room code to join',
-  'landing.joinDescription':
-    'If someone already created the room, paste the code here to open the shared session.',
   'landing.roomCodeLabel': 'Room code',
   'landing.roomCodeHint': 'Use the exact room ID that was shared with you.',
   'landing.roomCodePlaceholder': 'e.g. vien-a1b2c3d4',
@@ -49,23 +49,52 @@ const en = {
   'landing.joinButton': 'Join room',
   'landing.deterministicDemo': 'Real-time translation',
   'landing.noAccount': 'No account required',
+  'landing.benefitsEyebrow': 'Built for the conversation',
   'landing.benefitsHeading':
-    'How ViEnMeet supports bilingual meetings',
+    'Everything needed to keep two languages in one room.',
   'landing.benefitRealtimeTitle': 'Near real-time translation',
   'landing.benefitRealtimeDescription':
     'Follow each turn in both languages without breaking the meeting flow.',
   'landing.benefitGlossaryTitle': 'Business terminology support',
   'landing.benefitGlossaryDescription':
     'Keep company names, acronyms, and preferred phrasing consistent.',
-  'landing.benefitPrivacyTitle': 'Privacy-ready architecture',
-  'landing.benefitPrivacyDescription':
-    'Prepared for explicit processing, retention, and deployment controls.',
+  'landing.benefitChannelsTitle': 'Independent language channels',
+  'landing.benefitChannelsDescription':
+    'Each participant joins from their own device, language, and audio input.',
+  'landing.howEyebrow': 'One room, three simple steps',
+  'landing.howTitle': 'Meet without language juggling.',
+  'landing.howDescription':
+    'ViEnMeet keeps setup out of the way, then gives the translated conversation visual priority while preserving every original turn.',
+  'landing.stepCreateTitle': 'Create the room',
+  'landing.stepCreateDescription':
+    'Name the meeting, choose your language, and add the business terms that should stay consistent.',
+  'landing.stepInviteTitle': 'Invite the other person',
+  'landing.stepInviteDescription':
+    'Share one room code. They join from their own device and confirm their speaking language.',
+  'landing.stepSpeakTitle': 'Speak naturally',
+  'landing.stepSpeakDescription':
+    'Follow translated turns as the meeting happens, with the original language always available.',
+  'landing.channelsEyebrow': 'Two people, two inputs',
+  'landing.channelsTitle': 'Each voice keeps its own lane.',
+  'landing.channelsDescription':
+    'The Vietnamese and English participants use separate devices and independent audio channels. That makes the conversation model clearer from the first word.',
+  'landing.channelsDiagramLabel':
+    'Vietnamese and English speakers joining one translated meeting from separate devices',
+  'landing.vietnameseSpeaker': 'Vietnamese speaker',
+  'landing.englishSpeaker': 'English speaker',
+  'landing.ownDevice': 'Own device · independent audio',
   'landing.privacyEyebrow': 'Architecture note',
   'landing.privacyTitle': 'Clear boundaries by design.',
   'landing.privacyBody':
     'Audio is sent to the real-time gateway for transcription and translation.',
   'landing.privacyNote':
     'Review transport security, retention, and access controls before production deployment.',
+  'landing.transparencyNote':
+    'Meeting status and translated records stay visible throughout the flow.',
+  'landing.finalEyebrow': 'Ready when the conversation is',
+  'landing.finalTitle': 'Start with a room. Leave with shared understanding.',
+  'landing.finalDescription':
+    'Create a Vietnamese–English meeting in a few steps, or join an existing room with the code you received.',
   'landing.footer': 'ViEnMeet · Vietnamese ⇄ English',
   'preview.ariaLabel': 'Bilingual conversation example',
   'preview.monitor': 'Conversation monitor',
@@ -94,10 +123,10 @@ const en = {
   'setup.description':
     'Confirm the speakers, input mode, and business language that should remain consistent throughout the meeting.',
   'setup.joinDescription':
-    'You are joining an existing meeting. Only your display name, language, and microphone need confirmation.',
+    'Confirm your display name and speaking language before continuing to the device check.',
   'setup.connectionNote':
-    'The system connects directly to the real-time translation server.',
-  'setup.start': 'Start meeting',
+    'Next, you will choose your initial microphone and camera state.',
+  'setup.start': 'Create room',
   'setup.join': 'Join meeting',
   'setup.checking': 'Checking room…',
   'setup.checkingRoom': 'Checking whether this room is active…',
@@ -132,6 +161,32 @@ const en = {
   'details.pushToTalk': 'Push-to-talk',
   'details.pushToTalkDescription':
     'Hold Space or the microphone control while you speak.',
+  'prejoin.eyebrow': 'Before you enter',
+  'prejoin.skip': 'Skip to device setup',
+  'prejoin.pageTitle': 'Device check',
+  'prejoin.pageEyebrow': 'Setup / 02',
+  'prejoin.room': 'Meeting room',
+  'prejoin.title': 'Choose how you join the meeting.',
+  'prejoin.description':
+    'Set your microphone and camera now. These choices become your initial state in the room.',
+  'prejoin.previewAria': 'Camera preview before joining',
+  'prejoin.cameraOff': 'Camera off',
+  'prejoin.cameraRequesting': 'Starting camera…',
+  'prejoin.cameraReady': 'Camera ready',
+  'prejoin.cameraError':
+    'Camera access was blocked. Check your browser permission.',
+  'prejoin.cameraUnavailable':
+    'Camera preview is not available in this browser.',
+  'prejoin.cameraOn': 'Camera on',
+  'prejoin.entryState': 'Join with',
+  'prejoin.entryStateDescription':
+    'You can change both controls again during the meeting.',
+  'prejoin.permissionNote':
+    'Turning on the camera may ask for browser permission. You can still enter with it off.',
+  'prejoin.connectionNote':
+    'Your selected states will be applied when the meeting connection starts.',
+  'prejoin.start': 'Start meeting',
+  'prejoin.enter': 'Enter meeting',
   'microphone.title': 'Microphone',
   'microphone.description':
     'Allow microphone access and verify the live input level.',
@@ -377,10 +432,10 @@ const vi = {
   'landing.headlineSecond': 'Một cuộc trò chuyện.',
   'landing.description':
     'Phiên dịch Việt–Anh gần thời gian thực cho các cuộc họp kinh doanh tự nhiên và liền mạch.',
+  'landing.exploreHow': 'Xem cách hoạt động',
+  'landing.independentAudio': 'Kênh âm thanh riêng biệt',
   'landing.joinEyebrow': 'Tham gia phòng có sẵn',
   'landing.joinTitle': 'Nhập mã phòng để tham gia',
-  'landing.joinDescription':
-    'Nếu ai đó đã tạo phòng, hãy dán mã ở đây để mở cùng phiên họp.',
   'landing.roomCodeLabel': 'Mã phòng',
   'landing.roomCodeHint': 'Dùng đúng mã phòng đã được chia sẻ với bạn.',
   'landing.roomCodePlaceholder': 'vd: vien-a1b2c3d4',
@@ -390,23 +445,53 @@ const vi = {
   'landing.joinButton': 'Vào phòng',
   'landing.deterministicDemo': 'Dịch thuật thời gian thực',
   'landing.noAccount': 'Không cần tài khoản',
+  'landing.benefitsEyebrow': 'Được tạo cho cuộc trò chuyện',
   'landing.benefitsHeading':
-    'ViEnMeet hỗ trợ cuộc họp song ngữ như thế nào',
+    'Mọi thứ cần thiết để hai ngôn ngữ cùng ở trong một phòng.',
   'landing.benefitRealtimeTitle': 'Dịch gần thời gian thực',
   'landing.benefitRealtimeDescription':
     'Theo dõi từng lượt nói bằng cả hai ngôn ngữ mà không làm gián đoạn cuộc họp.',
   'landing.benefitGlossaryTitle': 'Hỗ trợ thuật ngữ kinh doanh',
   'landing.benefitGlossaryDescription':
     'Giữ nhất quán tên công ty, từ viết tắt và cách diễn đạt ưu tiên.',
-  'landing.benefitPrivacyTitle': 'Sẵn sàng cho yêu cầu riêng tư',
-  'landing.benefitPrivacyDescription':
-    'Sẵn sàng thiết lập rõ cách xử lý, lưu trữ và triển khai dữ liệu.',
+  'landing.benefitChannelsTitle': 'Kênh ngôn ngữ độc lập',
+  'landing.benefitChannelsDescription':
+    'Mỗi người tham gia bằng thiết bị, ngôn ngữ và âm thanh đầu vào riêng.',
+  'landing.howEyebrow': 'Một phòng, ba bước đơn giản',
+  'landing.howTitle': 'Họp mà không phải xoay xở ngôn ngữ.',
+  'landing.howDescription':
+    'ViEnMeet giữ phần thiết lập thật gọn, sau đó ưu tiên bản dịch trong cuộc trò chuyện và vẫn lưu lại đầy đủ từng lượt nói gốc.',
+  'landing.stepCreateTitle': 'Tạo phòng họp',
+  'landing.stepCreateDescription':
+    'Đặt tên cuộc họp, chọn ngôn ngữ và thêm các thuật ngữ kinh doanh cần được giữ nhất quán.',
+  'landing.stepInviteTitle': 'Mời người còn lại',
+  'landing.stepInviteDescription':
+    'Chia sẻ một mã phòng. Họ tham gia từ thiết bị riêng và xác nhận ngôn ngữ sẽ nói.',
+  'landing.stepSpeakTitle': 'Trò chuyện tự nhiên',
+  'landing.stepSpeakDescription':
+    'Theo dõi từng lượt dịch ngay khi cuộc họp diễn ra, với nội dung gốc luôn sẵn có.',
+  'landing.channelsEyebrow': 'Hai người, hai đầu vào',
+  'landing.channelsTitle': 'Mỗi giọng nói có một làn riêng.',
+  'landing.channelsDescription':
+    'Người nói tiếng Việt và tiếng Anh dùng thiết bị riêng cùng kênh âm thanh độc lập. Nhờ đó, mô hình hội thoại rõ ràng ngay từ lời đầu tiên.',
+  'landing.channelsDiagramLabel':
+    'Người nói tiếng Việt và tiếng Anh tham gia một cuộc họp có phiên dịch từ hai thiết bị riêng',
+  'landing.vietnameseSpeaker': 'Người nói tiếng Việt',
+  'landing.englishSpeaker': 'Người nói tiếng Anh',
+  'landing.ownDevice': 'Thiết bị riêng · âm thanh độc lập',
   'landing.privacyEyebrow': 'Ghi chú kiến trúc',
   'landing.privacyTitle': 'Ranh giới rõ ràng ngay từ thiết kế.',
   'landing.privacyBody':
     'Âm thanh được gửi tới cổng thời gian thực để nhận dạng và dịch.',
   'landing.privacyNote':
     'Cần kiểm tra bảo mật đường truyền, thời hạn lưu trữ và quyền truy cập trước khi triển khai thật.',
+  'landing.transparencyNote':
+    'Trạng thái cuộc họp và biên bản song ngữ luôn hiển thị rõ trong toàn bộ luồng.',
+  'landing.finalEyebrow': 'Sẵn sàng khi cuộc trò chuyện bắt đầu',
+  'landing.finalTitle':
+    'Bắt đầu bằng một phòng họp. Kết thúc bằng sự thấu hiểu.',
+  'landing.finalDescription':
+    'Tạo cuộc họp Việt–Anh chỉ trong vài bước, hoặc tham gia phòng có sẵn bằng mã bạn nhận được.',
   'landing.footer': 'ViEnMeet · Tiếng Việt ⇄ Tiếng Anh',
   'preview.ariaLabel': 'Ví dụ cuộc trò chuyện song ngữ',
   'preview.monitor': 'Theo dõi cuộc trò chuyện',
@@ -435,10 +520,10 @@ const vi = {
   'setup.description':
     'Xác nhận người tham gia, chế độ nhập và thuật ngữ kinh doanh cần được giữ nhất quán trong suốt cuộc họp.',
   'setup.joinDescription':
-    'Bạn đang tham gia một cuộc họp có sẵn. Chỉ cần xác nhận tên hiển thị, ngôn ngữ và micro của bạn.',
+    'Xác nhận tên hiển thị và ngôn ngữ bạn sẽ nói trước khi chuyển sang bước kiểm tra thiết bị.',
   'setup.connectionNote':
-    'Hệ thống sẽ kết nối trực tiếp với máy chủ dịch thuật thời gian thực.',
-  'setup.start': 'Bắt đầu cuộc họp',
+    'Bước tiếp theo, bạn sẽ chọn trạng thái ban đầu của micro và camera.',
+  'setup.start': 'Tạo phòng họp',
   'setup.join': 'Tham gia cuộc họp',
   'setup.checking': 'Đang kiểm tra phòng…',
   'setup.checkingRoom': 'Đang kiểm tra phòng có hoạt động hay không…',
@@ -473,6 +558,32 @@ const vi = {
   'details.pushToTalk': 'Nhấn để nói',
   'details.pushToTalkDescription':
     'Giữ phím Space hoặc nút micro trong lúc bạn nói.',
+  'prejoin.eyebrow': 'Trước khi vào phòng',
+  'prejoin.skip': 'Chuyển đến phần kiểm tra thiết bị',
+  'prejoin.pageTitle': 'Kiểm tra thiết bị',
+  'prejoin.pageEyebrow': 'Thiết lập / 02',
+  'prejoin.room': 'Phòng họp',
+  'prejoin.title': 'Chọn trạng thái khi vào cuộc họp.',
+  'prejoin.description':
+    'Thiết lập micro và camera ngay tại đây. Cuộc họp sẽ bắt đầu với đúng lựa chọn này.',
+  'prejoin.previewAria': 'Xem trước camera trước khi vào phòng',
+  'prejoin.cameraOff': 'Camera đang tắt',
+  'prejoin.cameraRequesting': 'Đang mở camera…',
+  'prejoin.cameraReady': 'Camera đã sẵn sàng',
+  'prejoin.cameraError':
+    'Quyền camera đã bị chặn. Hãy kiểm tra quyền của trình duyệt.',
+  'prejoin.cameraUnavailable':
+    'Trình duyệt này không hỗ trợ xem trước camera.',
+  'prejoin.cameraOn': 'Camera đang bật',
+  'prejoin.entryState': 'Vào phòng với',
+  'prejoin.entryStateDescription':
+    'Bạn vẫn có thể thay đổi cả hai trong khi họp.',
+  'prejoin.permissionNote':
+    'Trình duyệt có thể hỏi quyền khi bật camera. Bạn vẫn có thể vào phòng khi camera tắt.',
+  'prejoin.connectionNote':
+    'Trạng thái đã chọn sẽ được áp dụng khi bắt đầu kết nối cuộc họp.',
+  'prejoin.start': 'Bắt đầu cuộc họp',
+  'prejoin.enter': 'Vào phòng họp',
   'microphone.title': 'Micro',
   'microphone.description':
     'Cho phép truy cập micro và kiểm tra mức âm thanh đầu vào thực tế.',

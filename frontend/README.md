@@ -57,7 +57,8 @@ pnpm preview  # Preview the production build
 | --- | --- |
 | `/` | Concise product landing page and conversation preview |
 | `/create` | Create a local room and continue to setup |
-| `/room/:roomId/setup` | Meeting details, live microphone test, and glossary CRUD |
+| `/room/:roomId/setup` | Meeting details and glossary CRUD |
+| `/room/:roomId/prejoin` | Choose initial microphone and camera state before entering |
 | `/room/:roomId` | LiveKit video and realtime bilingual transcript console |
 | `/room/:roomId/summary` | Summary, actions, decisions, transcript, and browser export |
 
