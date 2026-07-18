@@ -1,9 +1,10 @@
 const DEFAULT_SAMPLE_RATE = 16_000
 const AUDIO_WORKLET_NAME = 'vienmeet-pcm-processor'
 
-interface AudioStreamerOptions {
+export interface AudioStreamerOptions {
   sampleRate?: number
   mediaStream?: MediaStream
+  deviceId?: string
   onAudioChunk: (chunk: ArrayBuffer) => void
   onVolume?: (volume: number) => void
 }
@@ -38,6 +39,9 @@ export class AudioStreamer {
             channelCount: 1,
             echoCancellation: true,
             noiseSuppression: true,
+            ...(this.options.deviceId
+              ? { deviceId: { exact: this.options.deviceId } }
+              : {}),
           },
         })
         this.ownsMediaStream = true

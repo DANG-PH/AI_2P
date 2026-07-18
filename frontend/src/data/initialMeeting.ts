@@ -10,6 +10,7 @@ export const createInitialMeeting = (): Meeting => ({
   localLanguage: 'vi',
   conversationMode: 'auto',
   microphoneId: '',
+  speakerId: '',
   languageOrder: ['vi', 'en'],
   glossary: [],
   turns: [],

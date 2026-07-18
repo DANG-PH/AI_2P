@@ -7,6 +7,7 @@ import type { RealtimeSessionStatus } from '@/types/realtime'
 
 const connectionValueKeys = {
   connecting: 'system.connecting',
+  reconnecting: 'system.reconnecting',
   'gateway-connected': 'system.gatewayConnected',
   ended: 'system.sessionEnded',
   error: 'system.connectionIssue',
@@ -18,6 +19,15 @@ export function SystemStatus() {
   const realtimeStatus = useMeetingStore(
     (state) => state.realtimeSession.status,
   )
+  const noiseLevel = useMeetingStore((state) => state.noiseLevel)
+  const noiseValueKey =
+    noiseLevel === 'unknown'
+      ? 'system.awaitingMetrics'
+      : (`common.${noiseLevel}` as const)
+  const latencyValueKey =
+    realtimeStatus === 'error'
+      ? 'system.unavailable'
+      : 'system.awaitingMetrics'
   const statusItems = [
     {
       labelKey: 'system.room',
@@ -31,12 +41,12 @@ export function SystemStatus() {
     },
     {
       labelKey: 'system.latency',
-      valueKey: 'system.awaitingMetrics',
+      valueKey: latencyValueKey,
       icon: Gauge,
     },
     {
       labelKey: 'system.noise',
-      valueKey: 'system.awaitingMetrics',
+      valueKey: noiseValueKey,
       icon: Volume2,
     },
     {

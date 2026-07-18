@@ -5,6 +5,10 @@ export const ROUTES = {
     `/room/${encodeURIComponent(roomId)}/setup`,
   joinSetup: (roomId: string) =>
     `/room/${encodeURIComponent(roomId)}/setup?join=1`,
+  prejoin: (roomId: string) =>
+    `/room/${encodeURIComponent(roomId)}/prejoin`,
+  joinPrejoin: (roomId: string) =>
+    `/room/${encodeURIComponent(roomId)}/prejoin?join=1`,
   meeting: (roomId: string) => `/room/${encodeURIComponent(roomId)}`,
   summary: (roomId: string) =>
     `/room/${encodeURIComponent(roomId)}/summary`,

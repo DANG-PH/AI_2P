@@ -28,6 +28,7 @@ export function useRealtimeConnection({
     (state) => state.setAudioInputLevel,
   )
   const socketRef = useRef<Socket | null>(null)
+  const lastConnectionErrorRef = useRef<Error | null>(null)
 
   const {
     id: roomId,
@@ -68,6 +69,8 @@ export function useRealtimeConnection({
     socketRef.current = socket
 
     socket.on('connect', () => {
+      lastConnectionErrorRef.current = null
+      setRealtimeStatus('connecting')
       socket.emit('speaker.switch', { speaker: localLanguage })
     })
 
@@ -125,19 +128,32 @@ export function useRealtimeConnection({
         reason !== 'io client disconnect' &&
         useMeetingStore.getState().meeting.status === 'live'
       ) {
-        setRealtimeStatus('connecting')
+        setRealtimeStatus('reconnecting')
       }
     })
 
     socket.on('connect_error', (error) => {
+      lastConnectionErrorRef.current = error
+      setRealtimeStatus('reconnecting')
+    })
+
+    const handleReconnectAttempt = () => {
+      setRealtimeStatus('reconnecting')
+    }
+    const handleReconnectFailed = () => {
+      const error = lastConnectionErrorRef.current
       applyRealtimeEvent({
         type: 'error',
         code: 'GATEWAY_CONNECTION_FAILED',
-        message: error.message,
+        message: error?.message ?? 'GATEWAY_CONNECTION_FAILED',
       })
-    })
+    }
+    socket.io.on('reconnect_attempt', handleReconnectAttempt)
+    socket.io.on('reconnect_failed', handleReconnectFailed)
 
     return () => {
+      socket.io.off('reconnect_attempt', handleReconnectAttempt)
+      socket.io.off('reconnect_failed', handleReconnectFailed)
       socket.removeAllListeners()
       socket.disconnect()
       if (socketRef.current === socket) {
@@ -230,5 +246,17 @@ export function useRealtimeConnection({
     })
   }, [])
 
-  return { endSession }
+  const retryConnection = useCallback(() => {
+    const socket = socketRef.current
+    if (!socket) {
+      return
+    }
+
+    lastConnectionErrorRef.current = null
+    setRealtimeStatus('connecting')
+    socket.disconnect()
+    socket.connect()
+  }, [setRealtimeStatus])
+
+  return { endSession, retryConnection }
 }

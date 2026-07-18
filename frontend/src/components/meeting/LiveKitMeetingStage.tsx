@@ -3,11 +3,13 @@ import {
   ConnectionQualityIndicator,
   GridLayout,
   ParticipantName,
+  ParticipantPlaceholder,
   ParticipantTile,
   TrackMutedIndicator,
   VideoTrack,
   isTrackReference,
   useLocalParticipant,
+  useRoomContext,
   useTrackRefContext,
   useTracks,
 } from '@livekit/components-react'
@@ -15,26 +17,37 @@ import { MonitorUp } from 'lucide-react'
 import { Track } from 'livekit-client'
 
 import { useTranslation } from '@/hooks/useTranslation'
-import { getInitials } from '@/lib/formatters'
 
-type MediaKind = 'microphone' | 'camera' | 'screen'
+type MediaKind = 'microphone' | 'camera' | 'screen' | 'speaker'
+
+export interface MeetingStageState {
+  hasRemoteParticipant: boolean
+  hasRemoteVideo: boolean
+}
 
 export interface LiveKitMeetingStageProps {
   microphoneEnabled: boolean
   cameraEnabled: boolean
   sharingEnabled: boolean
+  microphoneId: string
+  speakerId: string
   onMicrophoneTrackChange: (track: MediaStreamTrack | null) => void
   onMediaStateRejected: (kind: MediaKind) => void
+  onStageStateChange: (state: MeetingStageState) => void
 }
 
 export function LiveKitMeetingStage({
   microphoneEnabled,
   cameraEnabled,
   sharingEnabled,
+  microphoneId,
+  speakerId,
   onMicrophoneTrackChange,
   onMediaStateRejected,
+  onStageStateChange,
 }: LiveKitMeetingStageProps) {
   const { t } = useTranslation()
+  const room = useRoomContext()
   const {
     localParticipant,
     microphoneTrack,
@@ -49,6 +62,41 @@ export function LiveKitMeetingStage({
     ],
     { onlySubscribed: false },
   )
+  const hasRemoteParticipant = tracks.some(
+    (track) => !track.participant.isLocal,
+  )
+  const hasRemoteVideo = tracks.some(
+    (track) =>
+      !track.participant.isLocal &&
+      isTrackReference(track) &&
+      track.publication?.kind === Track.Kind.Video &&
+      !track.publication.isMuted &&
+      Boolean(track.publication.track),
+  )
+
+  useEffect(() => {
+    onStageStateChange({ hasRemoteParticipant, hasRemoteVideo })
+  }, [hasRemoteParticipant, hasRemoteVideo, onStageStateChange])
+
+  useEffect(() => {
+    if (!microphoneId) {
+      return
+    }
+
+    void room
+      .switchActiveDevice('audioinput', microphoneId)
+      .catch(() => onMediaStateRejected('microphone'))
+  }, [microphoneId, onMediaStateRejected, room])
+
+  useEffect(() => {
+    if (!speakerId) {
+      return
+    }
+
+    void room
+      .switchActiveDevice('audiooutput', speakerId)
+      .catch(() => onMediaStateRejected('speaker'))
+  }, [onMediaStateRejected, room, speakerId])
 
   useEffect(() => {
     if (isMicrophoneEnabled === microphoneEnabled) {
@@ -72,6 +120,7 @@ export function LiveKitMeetingStage({
     localParticipant,
     microphoneEnabled,
     onMediaStateRejected,
+
   ])
 
   useEffect(() => {
@@ -145,9 +194,11 @@ function LocalizedParticipantTile() {
   const isScreenShare = trackRef.source === Track.Source.ScreenShare
   const participantLabel =
     trackRef.participant.name || trackRef.participant.identity
-  const hasVideo =
+  const hasUsableVideo =
     isTrackReference(trackRef) &&
-    trackRef.publication?.kind === Track.Kind.Video
+    trackRef.publication?.kind === Track.Kind.Video &&
+    !trackRef.publication.isMuted &&
+    Boolean(trackRef.publication.track)
 
   return (
     <ParticipantTile
@@ -159,13 +210,14 @@ function LocalizedParticipantTile() {
       )}
       className="overflow-hidden rounded-[10px]"
     >
-      {hasVideo ? (
+      {hasUsableVideo ? (
         <VideoTrack trackRef={trackRef} />
       ) : (
         <div className="absolute inset-0 grid place-items-center bg-video-tile">
-          <span className="grid size-20 place-items-center rounded-full bg-[#34373d] text-xl font-semibold text-stage-ink ring-1 ring-white/8">
-            {getInitials(participantLabel)}
-          </span>
+          <ParticipantPlaceholder
+            className="h-full w-auto p-[10%]"
+            aria-hidden="true"
+          />
         </div>
       )}
 

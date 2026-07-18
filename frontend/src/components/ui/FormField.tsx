@@ -23,7 +23,7 @@ export function FormField({
     <div className="grid gap-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-[-0.01em] text-ink-soft"
+        className="text-sm leading-5 font-semibold tracking-[-0.01em] text-ink-soft"
       >
         {label}
         {required && (

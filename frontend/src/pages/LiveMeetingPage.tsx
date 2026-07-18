@@ -12,7 +12,10 @@ import '@livekit/components-styles'
 import { useNavigate } from 'react-router'
 
 import { ConversationFeed } from '@/components/meeting/ConversationFeed'
-import { LiveKitMeetingStage } from '@/components/meeting/LiveKitMeetingStage'
+import {
+  LiveKitMeetingStage,
+  type MeetingStageState,
+} from '@/components/meeting/LiveKitMeetingStage'
 import { MeetingControls } from '@/components/meeting/MeetingControls'
 import { MeetingHeader } from '@/components/meeting/MeetingHeader'
 import { MeetingSidebar } from '@/components/meeting/MeetingSidebar'
@@ -33,6 +36,7 @@ type MediaError =
   | 'microphone'
   | 'camera'
   | 'screen'
+  | 'speaker'
   | null
 
 const LIVEKIT_CONNECT_OPTIONS = { autoSubscribe: true } as const
@@ -44,6 +48,9 @@ export default function LiveMeetingPage() {
   const meeting = useMeetingStore((state) => state.meeting)
   const microphoneEnabled = useMeetingStore(
     (state) => state.microphoneEnabled,
+  )
+  const cameraEnabled = useMeetingStore(
+    (state) => state.cameraEnabled,
   )
   const realtimeStatus = useMeetingStore(
     (state) => state.realtimeSession.status,
@@ -57,6 +64,13 @@ export default function LiveMeetingPage() {
   const toggleMicrophone = useMeetingStore(
     (state) => state.toggleMicrophone,
   )
+  const setCameraEnabled = useMeetingStore(
+    (state) => state.setCameraEnabled,
+  )
+  const setSpeaker = useMeetingStore((state) => state.setSpeaker)
+  const toggleCamera = useMeetingStore(
+    (state) => state.toggleCamera,
+  )
   const setConversationMode = useMeetingStore(
     (state) => state.setConversationMode,
   )
@@ -68,8 +82,9 @@ export default function LiveMeetingPage() {
 
   const [contextOpen, setContextOpen] = useState(false)
   const [noteDialogOpen, setNoteDialogOpen] = useState(false)
+  const [endDialogOpen, setEndDialogOpen] = useState(false)
+  const [endingMeeting, setEndingMeeting] = useState(false)
   const [noteText, setNoteText] = useState('')
-  const [cameraEnabled, setCameraEnabled] = useState(true)
   const [captionsEnabled, setCaptionsEnabled] = useState(true)
   const [sharingEnabled, setSharingEnabled] = useState(false)
   const [microphoneTrack, setMicrophoneTrack] =
@@ -79,6 +94,10 @@ export default function LiveMeetingPage() {
   const [livekitUrl, setLivekitUrl] = useState(LIVEKIT_URL)
   const [livekitConnected, setLivekitConnected] = useState(false)
   const [mediaError, setMediaError] = useState<MediaError>(null)
+  const [stageState, setStageState] = useState<MeetingStageState>({
+    hasRemoteParticipant: false,
+    hasRemoteVideo: false,
+  })
 
   const elapsedSeconds = useMeetingClock(
     meeting.startedAt,
@@ -92,7 +111,7 @@ export default function LiveMeetingPage() {
   const transmitAudio =
     microphoneEnabled &&
     (meeting.conversationMode === 'auto' || pushToTalk.active)
-  const { endSession } = useRealtimeConnection({
+  const { endSession, retryConnection } = useRealtimeConnection({
     microphoneTrack,
     transmitAudio,
   })
@@ -197,11 +216,13 @@ export default function LiveMeetingPage() {
         setMicrophoneEnabled(false)
       } else if (kind === 'camera') {
         setCameraEnabled(false)
-      } else {
+      } else if (kind === 'screen') {
         setSharingEnabled(false)
+      } else {
+        setSpeaker('')
       }
     },
-    [setMicrophoneEnabled],
+    [setCameraEnabled, setMicrophoneEnabled, setSpeaker],
   )
 
   const handleLiveKitConnected = useCallback(() => {
@@ -218,15 +239,37 @@ export default function LiveMeetingPage() {
     setMediaError('connection')
   }, [])
 
-  const handleEndMeeting = async () => {
-    await endSession()
-    const currentState = useMeetingStore.getState()
-
-    if (currentState.meeting.status === 'live') {
-      currentState.endMeeting(
-        new Date().toISOString(),
-        elapsedSeconds,
+  const handleStageStateChange = useCallback(
+    (nextState: MeetingStageState) => {
+      setStageState((currentState) =>
+        currentState.hasRemoteParticipant ===
+          nextState.hasRemoteParticipant &&
+        currentState.hasRemoteVideo === nextState.hasRemoteVideo
+          ? currentState
+          : nextState,
       )
+    },
+    [],
+  )
+
+  const handleEndMeeting = async () => {
+    if (endingMeeting) {
+      return
+    }
+
+    setEndingMeeting(true)
+    try {
+      await endSession()
+      const currentState = useMeetingStore.getState()
+
+      if (currentState.meeting.status === 'live') {
+        currentState.endMeeting(
+          new Date().toISOString(),
+          elapsedSeconds,
+        )
+      }
+    } finally {
+      setEndingMeeting(false)
     }
   }
 
@@ -257,6 +300,16 @@ export default function LiveMeetingPage() {
     mediaError === null
       ? null
       : (`stage.error.${mediaError}` as const)
+  const translationFocused =
+    captionsEnabled && !stageState.hasRemoteVideo
+  const stageSectionClassName = cn(
+    'relative bg-meeting-stage p-3 md:h-auto md:max-h-none md:flex-none md:p-5 lg:h-full lg:min-h-0',
+    !captionsEnabled
+      ? 'min-h-0 flex-1'
+      : translationFocused
+        ? 'h-[32dvh] min-h-[12rem] max-h-[18rem] flex-none md:min-h-[26rem]'
+        : 'h-[45dvh] min-h-[16rem] max-h-[26rem] flex-none md:min-h-[30rem]',
+  )
 
   return (
     <div className="flex h-dvh min-h-[32rem] flex-col overflow-hidden bg-canvas text-ink">
@@ -274,13 +327,21 @@ export default function LiveMeetingPage() {
         id="meeting-conversation"
         className={cn(
           'relative flex min-h-0 flex-1 flex-col overflow-hidden bg-meeting-stage pb-[4.75rem] md:block md:overflow-y-auto lg:overflow-hidden lg:pb-0',
+          captionsEnabled && 'lg:grid',
           captionsEnabled &&
-            'lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(22rem,1fr)]',
+            (translationFocused
+              ? 'lg:grid-cols-[minmax(0,0.85fr)_minmax(24rem,1.15fr)]'
+              : 'lg:grid-cols-[minmax(0,2fr)_minmax(22rem,1fr)]'),
         )}
       >
         {livekitToken && livekitRoomId === roomId ? (
-          <section className="relative min-h-0 flex-1 bg-meeting-stage p-3 md:min-h-[30rem] md:flex-none md:p-5 lg:h-full lg:min-h-0">
-            <div className="relative h-full min-h-[15rem] overflow-hidden rounded-[12px] border border-white/6 bg-slate-950">
+          <section className={stageSectionClassName}>
+            <div
+              className={cn(
+                'relative h-full overflow-hidden rounded-[12px] border border-white/6 bg-slate-950',
+                translationFocused ? 'min-h-[11rem]' : 'min-h-[15rem]',
+              )}
+            >
               <LiveKitRoom
                 video={false}
                 audio={false}
@@ -298,8 +359,11 @@ export default function LiveMeetingPage() {
                     microphoneEnabled={transmitAudio}
                     cameraEnabled={cameraEnabled}
                     sharingEnabled={sharingEnabled}
+                    microphoneId={meeting.microphoneId}
+                    speakerId={meeting.speakerId}
                     onMicrophoneTrackChange={setMicrophoneTrack}
                     onMediaStateRejected={handleMediaRejected}
+                    onStageStateChange={handleStageStateChange}
                   />
                 ) : (
                   <div className="grid h-full place-items-center px-6 text-center text-sm text-stage-muted">
@@ -319,10 +383,13 @@ export default function LiveMeetingPage() {
             </div>
           </section>
         ) : (
-          <section className="relative min-h-0 flex-1 bg-meeting-stage p-3 md:min-h-[30rem] md:flex-none md:p-5 lg:h-full lg:min-h-0">
+          <section className={stageSectionClassName}>
             <div
               role={mediaError === 'connection' ? 'alert' : 'status'}
-              className="grid h-full min-h-[15rem] place-items-center rounded-[12px] border border-white/6 bg-slate-950 px-6 text-center text-sm text-stage-muted"
+              className={cn(
+                'grid h-full place-items-center rounded-[12px] border border-white/6 bg-slate-950 px-6 text-center text-sm text-stage-muted',
+                translationFocused ? 'min-h-[11rem]' : 'min-h-[15rem]',
+              )}
             >
               {t(
                 mediaError === 'connection'
@@ -345,7 +412,9 @@ export default function LiveMeetingPage() {
             onToggleMode={handleToggleMode}
             onSwapLanguages={swapLanguages}
             onAddNote={() => setNoteDialogOpen(true)}
+            onRetryRealtime={retryConnection}
             realtimeStatus={realtimeStatus}
+            prioritizeTranslation={translationFocused}
           />
         )}
       </main>
@@ -358,11 +427,10 @@ export default function LiveMeetingPage() {
         conversationMode={meeting.conversationMode}
         pushToTalkActive={pushToTalk.active}
         conversationVisible={captionsEnabled}
+        translationFocused={translationFocused}
         mediaControlsDisabled={!livekitConnected}
         onToggleMicrophone={toggleMicrophone}
-        onToggleCamera={() =>
-          setCameraEnabled((enabled) => !enabled)
-        }
+        onToggleCamera={toggleCamera}
         onToggleCaptions={() =>
           setCaptionsEnabled((enabled) => !enabled)
         }
@@ -370,10 +438,47 @@ export default function LiveMeetingPage() {
           setSharingEnabled((enabled) => !enabled)
         }
         onOpenContext={() => setContextOpen(true)}
-        onEndMeeting={() => void handleEndMeeting()}
+        onEndMeeting={() => setEndDialogOpen(true)}
         onPushToTalkStart={pushToTalk.start}
         onPushToTalkStop={pushToTalk.stop}
       />
+
+      <Dialog
+        open={endDialogOpen}
+        onClose={() => {
+          if (!endingMeeting) {
+            setEndDialogOpen(false)
+          }
+        }}
+        title={t('meeting.endDialogTitle')}
+        description={t('meeting.endDialogDescription')}
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setEndDialogOpen(false)}
+              disabled={endingMeeting}
+            >
+              {t('meeting.continueMeeting')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void handleEndMeeting()}
+              disabled={endingMeeting}
+              className="bg-danger text-white hover:border-[#b91c1c] hover:bg-[#b91c1c]"
+            >
+              {endingMeeting
+                ? t('meeting.ending')
+                : t('meeting.endMeeting')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm leading-6 text-muted">
+          {t('meeting.endDialogBody')}
+        </p>
+      </Dialog>
 
       <Dialog
         open={contextOpen}

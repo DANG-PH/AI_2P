@@ -1,6 +1,5 @@
 import { Link } from 'react-router'
 
-import logoUrl from '@/assets/logo-vien.png'
 import { useTranslation } from '@/hooks/useTranslation'
 import { cn } from '@/lib/utils'
 
@@ -15,10 +14,10 @@ const mark = (
     <img
       aria-hidden="true"
       alt=""
-      className="size-8 object-contain"
-      src={logoUrl}
+      className="size-8 shrink-0 object-contain"
+      src="/icon-512.png"
     />
-    <span className="font-bold tracking-[-0.04em]">
+    <span className="text-lg font-bold tracking-[-0.045em]">
       <span className="text-primary">Vi</span>
       <span className="text-vietnamese">En</span>
       <span className="text-ink">Meet</span>

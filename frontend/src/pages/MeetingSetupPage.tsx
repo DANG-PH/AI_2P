@@ -28,7 +28,6 @@ export default function MeetingSetupPage() {
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const roomId = useRoomSession()
-  const startMeeting = useMeetingStore((state) => state.startMeeting)
   const isJoining = searchParams.get('join') === '1'
   const [sessionCheckStatus, setSessionCheckStatus] =
     useState<SessionCheckStatus>(isJoining ? 'checking' : 'idle')
@@ -84,13 +83,16 @@ export default function MeetingSetupPage() {
     return () => controller.abort()
   }, [isJoining, retryCount, roomId])
 
-  const handleStartMeeting = () => {
+  const handleContinue = () => {
     if (isJoining && sessionCheckStatus !== 'ready') {
       return
     }
 
-    startMeeting()
-    navigate(ROUTES.meeting(roomId))
+    navigate(
+      isJoining
+        ? ROUTES.joinPrejoin(roomId)
+        : ROUTES.prejoin(roomId),
+    )
   }
 
   const joinUnavailable =
@@ -117,7 +119,7 @@ export default function MeetingSetupPage() {
 
       <main
         id="setup-main"
-        className="mx-auto w-full max-w-[82rem] px-4 pb-12 pt-8 sm:px-6 sm:pb-16 sm:pt-11 lg:px-8"
+        className="mx-auto w-full max-w-328 px-4 pb-12 pt-8 sm:px-6 sm:pb-16 sm:pt-11 lg:px-8"
       >
         <div className="max-w-3xl">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
@@ -173,7 +175,7 @@ export default function MeetingSetupPage() {
           }
         >
           <MeetingDetailsForm
-            onValidSubmit={handleStartMeeting}
+            onValidSubmit={handleContinue}
             isJoining={isJoining}
           />
           {!isJoining && <GlossaryEditor />}

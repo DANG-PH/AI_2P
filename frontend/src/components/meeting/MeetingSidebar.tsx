@@ -174,9 +174,14 @@ export function MeetingSidebar({
                 {t('sidebar.inMeeting')}
               </h2>
               <span className="text-xs text-muted">
-                {t('common.people', {
+                {t(
+                  connectedParticipants.length === 1
+                    ? 'common.person'
+                    : 'common.people',
+                  {
                   count: connectedParticipants.length,
-                })}
+                  },
+                )}
               </span>
             </div>
             {connectedParticipants.map((participant) => (

@@ -2,12 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ArrowDown,
   AudioLines,
+  CircleAlert,
   FilePlus2,
   Languages,
+  LoaderCircle,
+  RefreshCw,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { useTranslation } from '@/hooks/useTranslation'
+import type { TranslationKey } from '@/i18n/translations'
+import { cn } from '@/lib/utils'
 import type {
   ConversationMode,
   ConversationTurn,
@@ -26,7 +31,9 @@ export interface ConversationFeedProps {
   onToggleMode: () => void
   onSwapLanguages: () => void
   onAddNote: () => void
+  onRetryRealtime: () => void
   realtimeStatus?: RealtimeSessionStatus
+  prioritizeTranslation?: boolean
 }
 
 export function ConversationFeed({
@@ -38,7 +45,9 @@ export function ConversationFeed({
   onToggleMode,
   onSwapLanguages,
   onAddNote,
+  onRetryRealtime,
   realtimeStatus,
+  prioritizeTranslation = false,
 }: ConversationFeedProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -46,6 +55,45 @@ export function ConversationFeed({
   const lastTurn = turns.at(-1)
   const languageLabel = (language: Language) =>
     t(language === 'vi' ? 'common.vietnamese' : 'common.english')
+  const effectiveRealtimeStatus = realtimeStatus ?? 'connecting'
+  const realtimeState = {
+    connecting: {
+      titleKey: 'feed.connectingTitle',
+      descriptionKey: 'feed.connectingDescription',
+      tone: 'neutral',
+    },
+    reconnecting: {
+      titleKey: 'feed.reconnectingTitle',
+      descriptionKey: 'feed.reconnectingDescription',
+      tone: 'warning',
+    },
+    'gateway-connected': {
+      titleKey: 'feed.readyTitle',
+      descriptionKey:
+        conversationMode === 'push-to-talk'
+          ? 'feed.pushReadyDescription'
+          : 'feed.autoHint',
+      tone: 'ready',
+    },
+    ended: {
+      titleKey: 'feed.endedTitle',
+      descriptionKey: 'feed.endedDescription',
+      tone: 'neutral',
+    },
+    error: {
+      titleKey: 'feed.errorTitle',
+      descriptionKey: 'feed.errorDescription',
+      tone: 'danger',
+    },
+  } as const satisfies Record<
+    RealtimeSessionStatus,
+    {
+      titleKey: TranslationKey
+      descriptionKey: TranslationKey
+      tone: 'neutral' | 'warning' | 'ready' | 'danger'
+    }
+  >
+  const currentRealtimeState = realtimeState[effectiveRealtimeStatus]
 
   const scrollToTail = (behavior: ScrollBehavior) => {
     const container = scrollRef.current
@@ -74,7 +122,12 @@ export function ConversationFeed({
 
   return (
     <section
-      className="relative z-10 flex h-[44%] min-h-[17rem] shrink-0 flex-col overflow-hidden rounded-t-[14px] border-t border-line-strong bg-panel md:h-auto md:min-h-[30rem] md:rounded-none lg:h-full lg:min-h-0 lg:border-l lg:border-t-0"
+      className={cn(
+        'relative z-10 flex flex-col overflow-hidden rounded-t-[14px] border-t border-line-strong bg-panel md:h-auto md:min-h-[30rem] md:rounded-none lg:h-full lg:min-h-0 lg:border-l lg:border-t-0',
+        prioritizeTranslation
+          ? 'min-h-[18rem] flex-1'
+          : 'h-[44%] min-h-[17rem] shrink-0',
+      )}
       aria-labelledby="conversation-heading"
     >
       <div className="border-b border-line bg-panel px-4 py-3.5 sm:px-5">
@@ -146,6 +199,17 @@ export function ConversationFeed({
         )}
       </div>
 
+      {turns.length > 0 &&
+        effectiveRealtimeStatus !== 'gateway-connected' && (
+          <RealtimeStatusNotice
+            status={effectiveRealtimeStatus}
+            title={t(currentRealtimeState.titleKey)}
+            description={t(currentRealtimeState.descriptionKey)}
+            onRetry={onRetryRealtime}
+            retryLabel={t('feed.retry')}
+          />
+        )}
+
       <div
         ref={scrollRef}
         onScroll={(event) => {
@@ -160,23 +224,57 @@ export function ConversationFeed({
           {turns.length === 0 ? (
             <div className="grid min-h-[16rem] place-items-center px-6 pb-28 pt-6 text-center sm:py-10">
               <div className="max-w-sm">
-                <div className="mx-auto mb-4 grid size-10 place-items-center rounded-[10px] bg-[#f0fdfa] text-vietnamese">
-                  <AudioLines className="size-5" aria-hidden="true" />
+                <div
+                  className={cn(
+                    'mx-auto mb-4 grid size-10 place-items-center rounded-[10px]',
+                    currentRealtimeState.tone === 'danger'
+                      ? 'bg-danger/8 text-danger'
+                      : currentRealtimeState.tone === 'warning'
+                        ? 'bg-warning/10 text-warning-soft'
+                        : 'bg-[#f0fdfa] text-vietnamese',
+                  )}
+                >
+                  {effectiveRealtimeStatus === 'connecting' ||
+                  effectiveRealtimeStatus === 'reconnecting' ? (
+                    <LoaderCircle
+                      className="size-5 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : effectiveRealtimeStatus === 'error' ? (
+                    <CircleAlert className="size-5" aria-hidden="true" />
+                  ) : (
+                    <AudioLines className="size-5" aria-hidden="true" />
+                  )}
                 </div>
-                <h3 className="text-sm font-semibold text-ink">
-                  {realtimeStatus === 'gateway-connected'
-                    ? t('turn.waiting')
-                    : t('feed.readyTitle')}
+                <h3
+                  className="text-sm font-semibold text-ink"
+                  role={
+                    effectiveRealtimeStatus === 'error' ? 'alert' : 'status'
+                  }
+                >
+                  {t(currentRealtimeState.titleKey)}
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  {realtimeStatus === 'gateway-connected'
-                    ? conversationMode === 'push-to-talk'
-                      ? t('feed.pushHint', {
-                          language: languageLabel(localLanguage),
-                        })
-                      : t('feed.autoHint')
-                    : t('feed.readyDescription')}
+                  {effectiveRealtimeStatus === 'gateway-connected' &&
+                  conversationMode === 'push-to-talk'
+                    ? t('feed.pushHint', {
+                        language: languageLabel(localLanguage),
+                      })
+                    : t(currentRealtimeState.descriptionKey)}
                 </p>
+                {effectiveRealtimeStatus === 'error' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon={
+                      <RefreshCw className="size-3.5" aria-hidden="true" />
+                    }
+                    onClick={onRetryRealtime}
+                    className="mt-4"
+                  >
+                    {t('feed.retry')}
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
@@ -212,5 +310,49 @@ export function ConversationFeed({
         </Button>
       )}
     </section>
+  )
+}
+
+interface RealtimeStatusNoticeProps {
+  status: RealtimeSessionStatus
+  title: string
+  description: string
+  retryLabel: string
+  onRetry: () => void
+}
+
+function RealtimeStatusNotice({
+  status,
+  title,
+  description,
+  retryLabel,
+  onRetry,
+}: RealtimeStatusNoticeProps) {
+  return (
+    <div
+      role={status === 'error' ? 'alert' : 'status'}
+      className={cn(
+        'flex flex-col gap-3 border-b px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-5',
+        status === 'error'
+          ? 'border-danger/20 bg-danger/6'
+          : 'border-warning/20 bg-warning/8',
+      )}
+    >
+      <div className="min-w-0">
+        <p className="font-semibold text-ink">{title}</p>
+        <p className="mt-1 leading-5 text-muted">{description}</p>
+      </div>
+      {status === 'error' && (
+        <Button
+          variant="secondary"
+          size="sm"
+          leadingIcon={<RefreshCw className="size-3.5" aria-hidden="true" />}
+          onClick={onRetry}
+          className="shrink-0"
+        >
+          {retryLabel}
+        </Button>
+      )}
+    </div>
   )
 }

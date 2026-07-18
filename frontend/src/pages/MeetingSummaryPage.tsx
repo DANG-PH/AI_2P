@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  CalendarClock,
   Check,
   Clipboard,
   Copy,
@@ -8,6 +9,7 @@ import {
   ListChecks,
   RotateCcw,
   Timer,
+  UsersRound,
 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
@@ -15,6 +17,7 @@ import { BrandMark } from '@/components/layout/BrandMark'
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher'
 import { ConversationTurnCard } from '@/components/meeting/ConversationTurnCard'
 import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useClipboard } from '@/hooks/useClipboard'
 import { useRoomSession } from '@/hooks/useRoomSession'
@@ -23,6 +26,7 @@ import { ROUTES } from '@/lib/constants'
 import { createRoomId } from '@/lib/meetingIdentity'
 import {
   formatDurationLabel,
+  formatDateTime,
   formatLanguagePair,
 } from '@/lib/formatters'
 import {
@@ -44,6 +48,19 @@ export default function MeetingSummaryPage() {
   const displayedTurns = meeting.turns
   const displayedDuration = meeting.durationSeconds
   const displayedNotes = meeting.notes
+  const hasSummaryContent =
+    displayedTurns.length > 0 || displayedNotes.length > 0
+  const hasTranscript = displayedTurns.length > 0
+  const participantNames = meeting.participants
+    .map((participant) => participant.name.trim())
+    .filter(Boolean)
+  const participantLabel =
+    participantNames.length > 0
+      ? participantNames.join(', ')
+      : t('summary.notRecorded')
+  const dateTimeLabel = meeting.startedAt
+    ? formatDateTime(meeting.startedAt, locale)
+    : t('summary.notRecorded')
 
   let summaryText = ''
   let actionItems: ActionItem[]
@@ -63,13 +80,13 @@ export default function MeetingSummaryPage() {
         },
       )
 
-      const participantNames = meeting.participants
+      const summaryParticipantNames = meeting.participants
         .map((participant) => participant.name.trim())
         .filter(Boolean)
         .join(', ')
-      if (participantNames) {
+      if (summaryParticipantNames) {
         summaryText += ` ${t('summary.participantsSentence', {
-          participants: participantNames,
+          participants: summaryParticipantNames,
         })}`
       }
 
@@ -230,44 +247,67 @@ export default function MeetingSummaryPage() {
               {meeting.title}
             </h1>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              leadingIcon={
-                copyState === 'copied' ? (
-                  <Check className="size-4" aria-hidden="true" />
-                ) : (
-                  <Copy className="size-4" aria-hidden="true" />
-                )
-              }
-              onClick={() => void copy(summaryText)}
-            >
-              {copyState === 'copied'
-                ? t('summary.copied')
-                : t('summary.copy')}
-            </Button>
-            <Button
-              variant="secondary"
-              leadingIcon={
-                <Download className="size-4" aria-hidden="true" />
-              }
-              onClick={downloadTranscript}
-            >
-              {t('summary.download')}
-            </Button>
-            <Button
-              variant="primary"
-              trailingIcon={
-                <ArrowRight className="size-4" aria-hidden="true" />
-              }
-              onClick={startAnotherMeeting}
-            >
-              {t('summary.startAnotherShort')}
-            </Button>
+          <div className="max-w-xl">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={hasSummaryContent ? 'primary' : 'secondary'}
+                leadingIcon={
+                  copyState === 'copied' ? (
+                    <Check className="size-4" aria-hidden="true" />
+                  ) : (
+                    <Copy className="size-4" aria-hidden="true" />
+                  )
+                }
+                onClick={() => void copy(summaryText)}
+                disabled={!hasSummaryContent}
+                aria-describedby={
+                  hasSummaryContent ? undefined : 'summary-actions-support'
+                }
+              >
+                {copyState === 'copied'
+                  ? t('summary.copied')
+                  : t('summary.copy')}
+              </Button>
+              <Button
+                variant="secondary"
+                leadingIcon={
+                  <Download className="size-4" aria-hidden="true" />
+                }
+                onClick={downloadTranscript}
+                disabled={!hasTranscript}
+                aria-describedby={
+                  hasTranscript ? undefined : 'summary-actions-support'
+                }
+              >
+                {t('summary.download')}
+              </Button>
+              <Button
+                variant={hasSummaryContent ? 'secondary' : 'primary'}
+                trailingIcon={
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                }
+                onClick={startAnotherMeeting}
+                className={!hasSummaryContent ? 'w-full sm:w-auto' : undefined}
+              >
+                {t('summary.startAnotherShort')}
+              </Button>
+            </div>
+            {!hasTranscript && (
+              <p
+                id="summary-actions-support"
+                className="mt-3 text-xs leading-5 text-muted"
+              >
+                {t(
+                  hasSummaryContent
+                    ? 'summary.noTranscriptAction'
+                    : 'summary.noContentActions',
+                )}
+              </p>
+            )}
           </div>
         </div>
 
-        <dl className="grid border-b border-line sm:grid-cols-3">
+        <dl className="grid border-b border-line sm:grid-cols-2 lg:grid-cols-[0.8fr_0.8fr_1fr_1.4fr_1.8fr]">
           <MetadataItem
             icon={<Timer className="size-4" aria-hidden="true" />}
             label={t('summary.duration')}
@@ -282,6 +322,16 @@ export default function MeetingSummaryPage() {
             icon={<Languages className="size-4" aria-hidden="true" />}
             label={t('summary.languages')}
             value={formatLanguagePair(meeting.languageOrder, locale)}
+          />
+          <MetadataItem
+            icon={<CalendarClock className="size-4" aria-hidden="true" />}
+            label={t('summary.dateTime')}
+            value={dateTimeLabel}
+          />
+          <MetadataItem
+            icon={<UsersRound className="size-4" aria-hidden="true" />}
+            label={t('summary.participants')}
+            value={participantLabel}
           />
         </dl>
 
@@ -302,6 +352,11 @@ export default function MeetingSummaryPage() {
             <p className="mt-5 max-w-[70ch] break-words text-base leading-8 text-ink-soft sm:text-lg">
               {summaryText}
             </p>
+            {hasSummaryContent && (
+              <p className="mt-4 max-w-[70ch] text-xs leading-5 text-muted">
+                {t('summary.localNotice')}
+              </p>
+            )}
           </section>
 
           <section
@@ -321,22 +376,11 @@ export default function MeetingSummaryPage() {
             ) : (
               <ol className="mt-4 divide-y divide-line">
                 {actionItems.map((item, index) => (
-                  <li key={item.id} className="grid gap-3 py-4 first:pt-1">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 text-xs font-bold tabular-nums text-muted">
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
-                      <p className="min-w-0 break-words text-sm font-semibold leading-6 text-ink-soft">
-                        {item.title}
-                      </p>
-                    </div>
-                    <div className="ml-7 flex items-center justify-between gap-3">
-                      <span className="min-w-0 break-words text-xs text-muted">
-                        {item.owner}
-                      </span>
-                      <StatusBadge tone="warning">{t('common.open')}</StatusBadge>
-                    </div>
-                  </li>
+                  <ActionItemRow
+                    key={item.id}
+                    item={item}
+                    index={index}
+                  />
                 ))}
               </ol>
             )}
@@ -492,16 +536,69 @@ interface MetadataItemProps {
 
 function MetadataItem({ icon, label, value }: MetadataItemProps) {
   return (
-    <div className="flex items-center gap-3 border-t border-line px-1 py-5 sm:border-t-0 sm:border-r sm:px-5 sm:first:pl-0 sm:last:border-r-0">
+    <div className="flex min-w-0 items-center gap-3 border-t border-line px-1 py-5 sm:px-5 lg:border-r lg:first:pl-0 lg:last:border-r-0">
       <span className="text-muted" aria-hidden="true">
         {icon}
       </span>
-      <div>
+      <div className="min-w-0">
         <dt className="text-[0.6875rem] font-bold uppercase tracking-[0.1em] text-muted">
           {label}
         </dt>
-        <dd className="mt-1 text-sm font-semibold text-ink-soft">{value}</dd>
+        <dd className="mt-1 break-words text-sm font-semibold text-ink-soft">
+          {value}
+        </dd>
       </div>
     </div>
+  )
+}
+
+interface ActionItemRowProps {
+  item: ActionItem
+  index: number
+}
+
+function ActionItemRow({ item, index }: ActionItemRowProps) {
+  const { t } = useTranslation()
+  const { copy, copyState } = useClipboard()
+
+  return (
+    <li className="grid gap-3 py-4 first:pt-1">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 text-xs font-bold tabular-nums text-muted">
+          {String(index + 1).padStart(2, '0')}
+        </span>
+        <p className="min-w-0 flex-1 break-words text-sm font-semibold leading-6 text-ink-soft">
+          {item.title}
+        </p>
+        <IconButton
+          label={
+            copyState === 'copied'
+              ? t('summary.actionCopied')
+              : t('summary.copyAction')
+          }
+          icon={
+            copyState === 'copied' ? (
+              <Check className="size-3.5" aria-hidden="true" />
+            ) : (
+              <Copy className="size-3.5" aria-hidden="true" />
+            )
+          }
+          onClick={() => void copy(item.title)}
+        />
+      </div>
+      <div className="ml-7 flex items-center justify-between gap-3">
+        <span className="min-w-0 break-words text-xs text-muted">
+          {item.owner}
+        </span>
+        <StatusBadge tone="warning">{t('common.open')}</StatusBadge>
+      </div>
+      <span className="sr-only" aria-live="polite">
+        {copyState === 'copied'
+          ? t('summary.actionCopied')
+          : copyState === 'failed'
+            ? t('summary.actionCopyFailed')
+            : ''}
+      </span>
+    </li>
   )
 }

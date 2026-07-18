@@ -21,6 +21,7 @@ export interface MeetingControlsProps {
   conversationMode: ConversationMode
   pushToTalkActive: boolean
   conversationVisible: boolean
+  translationFocused?: boolean
   mediaControlsDisabled?: boolean
   onToggleMicrophone: () => void
   onToggleCamera: () => void
@@ -40,6 +41,7 @@ export function MeetingControls({
   conversationMode,
   pushToTalkActive,
   conversationVisible,
+  translationFocused = false,
   mediaControlsDisabled = false,
   onToggleMicrophone,
   onToggleCamera,
@@ -62,7 +64,10 @@ export function MeetingControls({
     <div
       className={cn(
         'safe-bottom pointer-events-none fixed inset-x-0 bottom-2 z-30 flex justify-center px-2 sm:bottom-4',
-        conversationVisible && 'lg:right-[33.333%]',
+        conversationVisible &&
+          (translationFocused
+            ? 'lg:right-[57.5%]'
+            : 'lg:right-[33.333%]'),
       )}
     >
       <div className="pointer-events-auto flex max-w-full items-center gap-0.5 rounded-[14px] border border-line-strong bg-panel p-1 shadow-[0_10px_28px_rgb(16_24_40/0.14)] sm:gap-1.5 sm:p-2">

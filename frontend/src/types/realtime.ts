@@ -76,6 +76,7 @@ export type RealtimeServerEvent =
 
 export type RealtimeSessionStatus =
   | 'connecting'
+  | 'reconnecting'
   | 'gateway-connected'
   | 'ended'
   | 'error'

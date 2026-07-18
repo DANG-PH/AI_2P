@@ -19,9 +19,12 @@ export type MicrophoneTestStatus =
   | 'testing'
   | 'complete'
   | 'no-input'
+  | 'permission-denied'
+  | 'no-device'
+  | 'unsupported'
   | 'error'
 
-export type NoiseLevel = 'low' | 'medium' | 'high'
+export type NoiseLevel = 'unknown' | 'low' | 'medium' | 'high'
 
 export type ActionItemStatus = 'open' | 'completed'
 
@@ -67,6 +70,7 @@ export interface Meeting {
   localLanguage: Language
   conversationMode: ConversationMode
   microphoneId: string
+  speakerId: string
   languageOrder: LanguageOrder
   glossary: GlossaryTerm[]
   turns: ConversationTurn[]
