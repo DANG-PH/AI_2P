@@ -20,7 +20,7 @@ import type { TranslationKey } from '@/i18n/translations'
 import { ROUTES } from '@/lib/constants'
 import { useMeetingStore } from '@/store/meetingStore'
 
-const ROOM_CODE_PATTERN = /^vien-[a-z0-9]{8,64}$/i
+const ROOM_CODE_PATTERN = /^room-[a-z0-9]{8,64}$/i
 
 const flowSteps = [
   {

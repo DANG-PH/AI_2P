@@ -6,7 +6,7 @@ export const createRoomId = (): string => {
   const entityId = createEntityId('room')
   const randomPart = entityId.replaceAll('-', '').slice(-12)
 
-  return `vien-${randomPart}`
+  return `room-${randomPart}`
 }
 
 export const getOrCreateClientId = (): string => {

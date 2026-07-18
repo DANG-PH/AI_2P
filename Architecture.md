@@ -1289,5 +1289,5 @@ và implementation FastAPI trong cùng thay đổi.
 - Đại tu phần 3 (FastAPI): giải thích rõ multi-client, model sharing bắt buộc,
   concurrency với vLLM continuous batching, VRAM budget, test multi-client.
 - Cập nhật port NestJS từ 3001 → 4444.
-- Bỏ regex `vien-*` cho roomName — chấp nhận format tự do.
+- Bỏ regex `room-*` cho roomName — chấp nhận format tự do.
 - Sequence diagram vẽ lại với 2 WebSocket pipelines A và B riêng biệt.
