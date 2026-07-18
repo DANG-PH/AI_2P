@@ -15,6 +15,10 @@ MODELS = {
     # Quality-path LLM (chat/completions)
     "quality_llm": os.getenv("FPT_QUALITY_MODEL", "SaoLa3.1-medium"),
     "quality_llm_fallback": os.getenv("FPT_QUALITY_FALLBACK", "DeepSeek-V4-Flash"),
+    "fast_translation": (
+        os.getenv("FPT_FAST_MT_MODEL")
+        or os.getenv("FPT_QUALITY_FALLBACK", "DeepSeek-V4-Flash")
+    ),
 
     # ASR (audio/transcriptions)
     "asr": os.getenv("FPT_ASR_MODEL", "FPT.AI-whisper-large-v3-turbo"),

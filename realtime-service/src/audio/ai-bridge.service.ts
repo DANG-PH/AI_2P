@@ -63,6 +63,18 @@ function isAiWorkerReadyMessage(
   return isRecord(value) && value.type === 'session.ready';
 }
 
+function readinessUsesExternalApis(message: Record<string, unknown>): boolean {
+  if (!isRecord(message.capabilities)) return false;
+
+  return Object.values(message.capabilities).some(
+    (capability) =>
+      typeof capability === 'string' &&
+      (capability.startsWith('fpt:') ||
+        capability.startsWith('fpt-fast:') ||
+        capability.startsWith('quality:')),
+  );
+}
+
 @Injectable()
 export class AiBridgeService implements OnModuleDestroy {
   private readonly logger = new Logger(AiBridgeService.name);
@@ -246,6 +258,19 @@ export class AiBridgeService implements OnModuleDestroy {
           cleanup();
           reject(
             new Error('AI worker readiness ACK did not match session.init'),
+          );
+          return;
+        }
+
+        if (
+          readinessUsesExternalApis(message) &&
+          message.externalApisProbed !== true
+        ) {
+          cleanup();
+          reject(
+            new Error(
+              'AI worker readiness ACK did not verify external capabilities',
+            ),
           );
           return;
         }

@@ -1,8 +1,8 @@
 """Dependency-free WebSocket AI worker for realtime-service.
 
 The NestJS bridge connects to this process through AI_WS_URL and forwards
-binary PCM16 audio chunks. This worker emits partial ASR, final ASR, fast
-translation tokens, quality translation finals, and error events.
+binary PCM16 audio chunks. This worker emits partial ASR, final ASR,
+translation deltas, translation finals, and error events.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from copy import copy
 import struct
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
@@ -44,25 +44,19 @@ FINAL_BYTES = int(SAMPLE_RATE * BYTES_PER_SAMPLE * 1.2)
 LOGGER = logging.getLogger("vienmeet.ai")
 
 
-# --- FIX: shared/global model instances -------------------------------------
-# Truoc day moi PipelineSession (moi client connect) tu tao AudioPipeline(),
-# ASREngine(), FastPathTranslator() rieng, khien VAD (Silero), Whisper, va
-# NLLB bi load lai tu dau cho MOI session/connect. Gio dung 1 instance dung
-# chung cho toan server, load 1 lan duy nhat luc khoi dong.
-#
-# QualityPathTranslator KHONG can dung chung: no chi tao 1 OpenAI client tro
-# toi API ngoai (FPT AI Factory), khong load model cuc bo nao, nen khoi tao
-# rat nhe va giu nguyen per-session la on.
+# Shared model/API instances are warmed once before the worker starts listening.
+# The translators are stateless per request, so sharing them also lets their
+# successful external readiness probes be reused by every meeting session.
 _SHARED_AUDIO_PIPELINE: AudioPipeline | None = None
 _SHARED_ASR_ENGINE: ASREngine | None = None
 _SHARED_FAST_TRANSLATOR: FastPathTranslator | None = None
+_SHARED_QUALITY_TRANSLATOR: QualityPathTranslator | None = None
 
 
 def get_shared_audio_pipeline() -> AudioPipeline:
     global _SHARED_AUDIO_PIPELINE
     if _SHARED_AUDIO_PIPELINE is None:
         _SHARED_AUDIO_PIPELINE = AudioPipeline()
-        _SHARED_AUDIO_PIPELINE.preflight()  # load VAD ngay, chi 1 lan
     return _SHARED_AUDIO_PIPELINE
 
 
@@ -70,13 +64,6 @@ def get_shared_asr_engine() -> ASREngine:
     global _SHARED_ASR_ENGINE
     if _SHARED_ASR_ENGINE is None:
         _SHARED_ASR_ENGINE = ASREngine()
-        # FIX: dung preflight() - ham nay da tu kiem tra self._use_fpt_asr
-        # (dat tu FPT_ASR trong .env) va chi goi _ensure_model() (tai
-        # Whisper local ~2.9GB) khi KHONG dung FPT ASR. Truoc day worker.py
-        # goi thang _ensure_model() vo dieu kien nen luon tai Whisper du
-        # FPT_ASR=true. preflight() cung validate FPT API key ngay luc
-        # khoi dong thay vi doi den request dau tien moi bao loi.
-        _SHARED_ASR_ENGINE.preflight()
     return _SHARED_ASR_ENGINE
 
 
@@ -84,12 +71,48 @@ def get_shared_fast_translator() -> FastPathTranslator:
     global _SHARED_FAST_TRANSLATOR
     if _SHARED_FAST_TRANSLATOR is None:
         _SHARED_FAST_TRANSLATOR = FastPathTranslator()
-        # FIX: FastPathTranslator ban moi goi FPT API (khong load NLLB cuc
-        # bo nua), nen chi can preflight() de khoi tao client HTTP nhe,
-        # khong con _ensure_model() (ham nay khong ton tai trong ban moi).
-        _SHARED_FAST_TRANSLATOR.preflight()
     return _SHARED_FAST_TRANSLATOR
-# -----------------------------------------------------------------------------
+
+
+def get_shared_quality_translator() -> QualityPathTranslator:
+    global _SHARED_QUALITY_TRANSLATOR
+    if _SHARED_QUALITY_TRANSLATOR is None:
+        _SHARED_QUALITY_TRANSLATOR = QualityPathTranslator()
+    return _SHARED_QUALITY_TRANSLATOR
+
+
+def preflight_shared_runtime() -> tuple[dict[str, str | None], list[str]]:
+    """Warm required models and probe each configured external capability."""
+
+    def log_optional_error(capability: str, error: Exception) -> None:
+        LOGGER.warning(
+            "Optional shared capability unavailable capability=%s: %s",
+            capability,
+            error,
+        )
+
+    return preflight_runtime(
+        audio=get_shared_audio_pipeline(),
+        asr=get_shared_asr_engine(),
+        fast=get_shared_fast_translator(),
+        quality=get_shared_quality_translator(),
+        on_optional_error=log_optional_error,
+    )
+
+
+def external_apis_probed(capabilities: dict[str, str | None]) -> bool:
+    return any(
+        value is not None
+        and value.startswith(("fpt:", "fpt-fast:", "quality:"))
+        for value in capabilities.values()
+    )
+
+
+def next_translation_delta(stream: Iterator[str]) -> tuple[bool, str]:
+    try:
+        return False, next(stream)
+    except StopIteration:
+        return True, ""
 
 
 class WebSocketClosed(Exception):
@@ -212,15 +235,16 @@ class PipelineSession:
         self._mic_down_sent = False
         self.utterance_count = 0
         self.started_at = time.time()
+        self.fast_available = True
+        self.quality_available = True
 
-        # FIX: dung cac model dung chung (da load san tu luc server khoi
-        # dong) thay vi tao moi cho tung session. QualityPathTranslator van
-        # tao per-session vi no chi la 1 client HTTP nhe toi API ngoai.
+        # Shared resources are preflighted before the server opens its port.
+        # Their preflight methods are cached for direct/injected test servers.
         self.audio = get_shared_audio_pipeline()
         self.asr = get_shared_asr_engine()
         self.revision = RevisionHandler()
         self.fast = get_shared_fast_translator()
-        self.quality = QualityPathTranslator()
+        self.quality = get_shared_quality_translator()
         self.monitor = HealthMonitor()
         self.session = SessionManager()
         self.rag = RAGEngine()
@@ -297,6 +321,10 @@ class PipelineSession:
                 )
                 return True
 
+            self.fast_available = capabilities["fastTranslation"] is not None
+            self.quality_available = (
+                capabilities["qualityTranslation"] is not None
+            )
             self.ready = True
             await self.send_health_status(force=True)
             await self.ws.send_json(
@@ -307,7 +335,7 @@ class PipelineSession:
                     "languagePair": self.language_pair,
                     "capabilities": capabilities,
                     "warnings": warnings,
-                    "externalApisProbed": False,
+                    "externalApisProbed": external_apis_probed(capabilities),
                 },
             )
             return True
@@ -468,6 +496,7 @@ class PipelineSession:
                 segment,
                 glossary=self.glossary.get_all(),
                 acronym_table=self.acronym.get_all(),
+                language=self.speaker,
             )
             if asr_segment.text:
                 asr_segments.append(asr_segment)
@@ -526,64 +555,132 @@ class PipelineSession:
 
     async def translate_dual(self, source_text: str, utterance_id: str) -> str:
         source_lang, target_lang = self._language_pair()
-        if self.monitor.get_level() >= FallbackLevel.FAST_PATH_ONLY:
-            return await self.translate_fast_only(source_text, utterance_id, source_lang, target_lang)
+        if (
+            not self.quality_available
+            or self.monitor.get_level() >= FallbackLevel.FAST_PATH_ONLY
+        ):
+            return await self.translate_fast_only(
+                source_text,
+                utterance_id,
+                source_lang,
+                target_lang,
+            )
 
-        fast_task = asyncio.create_task(
-            asyncio.to_thread(self.fast.translate, source_text, source_lang, target_lang),
+        context = QualityContext(
+            asr_text=source_text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            sliding_window=[entry.source_text for entry in self.session.window.get_context()],
+            glossary=self.glossary.get_all(),
+            acronym_table=self.acronym.get_all(),
+            rag_chunks=self._rag_chunks(source_text),
         )
-        quality_task = asyncio.create_task(
-            asyncio.to_thread(self._translate_quality, source_text, source_lang, target_lang),
+        quality_text, stream_error = await self.forward_translation_stream(
+            self.quality.stream_translate(context),
+            utterance_id,
+        )
+        if stream_error is None:
+            final_text = self._annotate_acronyms(
+                quality_text.strip(),
+                source_text,
+            )
+            await self.send_translation_done(utterance_id, source_text, final_text)
+            self.monitor.report_success()
+            await self.send_health_status()
+            return final_text
+
+        level = self._report_quality_error(stream_error)
+        await self.send_health_status()
+        if level == FallbackLevel.REDUCE_CONTEXT:
+            self.session.window.resize(3)
+        return await self.translate_fast_only(
+            source_text,
+            utterance_id,
+            source_lang,
+            target_lang,
+            reset_draft=bool(quality_text),
         )
 
-        fast_text = ""
-        quality_failed = False
-        pending = {fast_task, quality_task}
-        try:
-            while pending:
-                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                for task in done:
-                    if task is fast_task:
-                        try:
-                            fast_result = task.result()
-                            fast_text = fast_result.translated_text
-                            await self.stream_translation_tokens(utterance_id, fast_text)
-                        except Exception as error:
-                            self.monitor.report_timeout()
-                            await self.send_health_status()
-                            if quality_task not in pending:
-                                quality_failed = True
-                    else:
-                        try:
-                            quality_text = task.result()
-                            final_text = self._annotate_acronyms(quality_text, source_text)
-                            await self.send_translation_done(utterance_id, source_text, final_text)
-                            self.monitor.report_success()
-                            await self.send_health_status()
-                            if not fast_task.done():
-                                fast_task.cancel()
-                            return final_text
-                        except Exception as error:
-                            level = self._report_quality_error(error)
-                            await self.send_health_status()
-                            if level == FallbackLevel.REDUCE_CONTEXT:
-                                self.session.window.resize(3)
-                            quality_failed = True
+    async def translate_fast_only(
+        self,
+        source_text: str,
+        utterance_id: str,
+        source_lang: str,
+        target_lang: str,
+        reset_draft: bool = False,
+    ) -> str:
+        if not self.fast_available:
+            return await self.send_raw_transcript(utterance_id, source_text)
 
-                if quality_failed and fast_text:
-                    final_text = self._annotate_acronyms(fast_text, source_text)
-                    await self.send_translation_done(utterance_id, source_text, final_text)
-                    return final_text
-        finally:
-            for task in (fast_task, quality_task):
-                if not task.done():
-                    task.cancel()
-
-        if fast_text:
-            final_text = self._annotate_acronyms(fast_text, source_text)
+        fast_text, stream_error = await self.forward_translation_stream(
+            self.fast.stream_translate(
+                source_text,
+                source_lang,
+                target_lang,
+            ),
+            utterance_id,
+            reset_first_delta=reset_draft,
+        )
+        if stream_error is None:
+            final_text = self._annotate_acronyms(
+                fast_text.strip(),
+                source_text,
+            )
             await self.send_translation_done(utterance_id, source_text, final_text)
             return final_text
 
+        self.monitor.report_critical_failure()
+        await self.send_health_status()
+        return await self.send_raw_transcript(utterance_id, source_text)
+
+    async def forward_translation_stream(
+        self,
+        stream: Iterator[str],
+        utterance_id: str,
+        reset_first_delta: bool = False,
+    ) -> tuple[str, Exception | None]:
+        chunks: list[str] = []
+        first_delta = True
+        try:
+            while True:
+                done, delta = await asyncio.to_thread(
+                    next_translation_delta,
+                    stream,
+                )
+                if done:
+                    break
+                if not delta:
+                    continue
+
+                chunks.append(delta)
+                await self.send_translation_token(
+                    utterance_id,
+                    delta,
+                    reset=reset_first_delta and first_delta,
+                )
+                first_delta = False
+        except Exception as error:
+            return "".join(chunks), error
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                try:
+                    await asyncio.to_thread(close)
+                except Exception:
+                    pass
+
+        full_text = "".join(chunks)
+        if not full_text.strip():
+            return full_text, ModelUnavailableError(
+                "Translation model returned an empty stream.",
+            )
+        return full_text, None
+
+    async def send_raw_transcript(
+        self,
+        utterance_id: str,
+        source_text: str,
+    ) -> str:
         await self.ws.send_json(
             {
                 "type": "error",
@@ -594,67 +691,26 @@ class PipelineSession:
         await self.send_translation_done(utterance_id, source_text, source_text)
         return source_text
 
-    async def translate_fast_only(
-        self,
-        source_text: str,
-        utterance_id: str,
-        source_lang: str,
-        target_lang: str,
-    ) -> str:
-        try:
-            result = await asyncio.to_thread(self.fast.translate, source_text, source_lang, target_lang)
-            final_text = self._annotate_acronyms(result.translated_text, source_text)
-            await self.stream_translation_tokens(utterance_id, final_text)
-            await self.send_translation_done(utterance_id, source_text, final_text)
-            return final_text
-        except Exception:
-            self.monitor.report_critical_failure()
-            await self.send_health_status()
-            await self.ws.send_json(
-                {
-                    "type": "error",
-                    "code": "RAW_TRANSCRIPT",
-                    "message": "Translation models failed; showing raw ASR transcript.",
-                },
-            )
-            await self.send_translation_done(utterance_id, source_text, source_text)
-            return source_text
-
-    def _translate_quality(self, source_text: str, source_lang: str, target_lang: str) -> str:
-        context = QualityContext(
-            asr_text=source_text,
-            source_lang=source_lang,
-            target_lang=target_lang,
-            sliding_window=[entry.source_text for entry in self.session.window.get_context()],
-            glossary=self.glossary.get_all(),
-            acronym_table=self.acronym.get_all(),
-            rag_chunks=self._rag_chunks(source_text),
-        )
-        result = self.quality.translate(context)
-        if result.timed_out:
-            raise TimeoutError("Quality translation timed out")
-        return result.translated_text
-
     def _rag_chunks(self, text: str) -> list[str]:
         try:
             return [chunk.text for chunk in self.rag.retrieve(text, top_k=3)]
         except Exception:
             return []
 
-    async def stream_translation(self, utterance_id: str, source_text: str, text: str) -> None:
-        await self.stream_translation_tokens(utterance_id, text)
-        await self.send_translation_done(utterance_id, source_text, text)
-
-    async def stream_translation_tokens(self, utterance_id: str, text: str) -> None:
-        words = text.split()
-        for index, word in enumerate(words):
-            await self.ws.send_json(
-                {
-                    "type": "translate.token",
-                    "token": word + (" " if index < len(words) - 1 else ""),
-                    "utteranceId": utterance_id,
-                },
-            )
+    async def send_translation_token(
+        self,
+        utterance_id: str,
+        token: str,
+        reset: bool = False,
+    ) -> None:
+        event: dict[str, Any] = {
+            "type": "translate.token",
+            "token": token,
+            "utteranceId": utterance_id,
+        }
+        if reset:
+            event["reset"] = True
+        await self.ws.send_json(event)
 
     async def send_translation_done(self, utterance_id: str, source_text: str, text: str) -> None:
         await self.ws.send_json(
@@ -866,16 +922,11 @@ async def run_server(host: str | None = None, port: int | None = None) -> None:
     host = host or os.getenv("AI_WS_HOST", "127.0.0.1")
     port = port or int(os.getenv("AI_WS_PORT", "8765"))
 
-    # FIX: "warm up" cac shared instance NGAY luc server khoi dong, TRUOC khi
-    # mo cong nhan client, de client dau tien khong phai doi load. Voi cau
-    # hinh FPT_ASR=true, get_shared_asr_engine() se KHONG tai Whisper local
-    # nua; get_shared_fast_translator() chi khoi tao 1 HTTP client toi FPT
-    # API (khong con NLLB local), nen buoc warm-up nay rat nhanh va nhe RAM.
-    print("Warming up shared resources (VAD; ASR/translate via FPT API when configured)...")
-    await asyncio.to_thread(get_shared_audio_pipeline)
-    await asyncio.to_thread(get_shared_asr_engine)
-    await asyncio.to_thread(get_shared_fast_translator)
-    print("All shared resources ready.")
+    print("Warming up shared resources and probing configured AI APIs...")
+    capabilities, warnings = await asyncio.to_thread(preflight_shared_runtime)
+    print(f"Shared AI resources ready: {capabilities}")
+    if warnings:
+        print(f"Readiness warnings: {', '.join(warnings)}")
 
     server = await asyncio.start_server(handle_client, host, port)
     sockets = ", ".join(str(socket.getsockname()) for socket in server.sockets or [])

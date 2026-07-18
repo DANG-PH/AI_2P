@@ -19,6 +19,7 @@ export type SttFinalEvent = {
 export type TranslateTokenEvent = {
   type: 'translate.token';
   token: string;
+  reset?: boolean;
   clientId: string;
   utteranceId: string;
 };

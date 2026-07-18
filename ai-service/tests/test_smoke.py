@@ -129,17 +129,111 @@ class FakeDb:
 
 
 class FakeChatCompletions:
+    def __init__(
+        self,
+        content="hello KPI translated by llm",
+        stream_chunks=None,
+        stream_error=None,
+    ):
+        self.content = content
+        self.stream_chunks = stream_chunks or [
+            word + (" " if index < len(content.split()) - 1 else "")
+            for index, word in enumerate(content.split())
+        ]
+        self.stream_error = stream_error
+        self.calls = []
+
     def create(self, **_kwargs):
         self.last_kwargs = _kwargs
-        message = SimpleNamespace(content="hello KPI translated by llm")
+        self.calls.append(_kwargs)
+        if _kwargs.get("stream") is True:
+            return FakeChatStream(
+                self.stream_chunks,
+                self.stream_error,
+            )
+        message = SimpleNamespace(content=self.content)
         choice = SimpleNamespace(message=message)
         return SimpleNamespace(choices=[choice])
 
 
+class FakeChatStream:
+    def __init__(self, chunks, error=None):
+        self.chunks = list(chunks)
+        self.error = error
+        self.index = 0
+        self.closed = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.index < len(self.chunks):
+            content = self.chunks[self.index]
+            self.index += 1
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content=content),
+                    ),
+                ],
+            )
+        if self.error is not None:
+            error = self.error
+            self.error = None
+            raise error
+        raise StopIteration
+
+    def close(self):
+        self.closed = True
+
+
 class FakeOpenAiClient:
-    def __init__(self):
-        self.completions = FakeChatCompletions()
+    def __init__(
+        self,
+        content="hello KPI translated by llm",
+        stream_chunks=None,
+        stream_error=None,
+    ):
+        self.completions = FakeChatCompletions(
+            content,
+            stream_chunks,
+            stream_error,
+        )
         self.chat = SimpleNamespace(completions=self.completions)
+
+
+class FailingChatCompletions:
+    def __init__(self):
+        self.calls = 0
+
+    def create(self, **_kwargs):
+        self.calls += 1
+        raise ConnectionError("probe failed")
+
+
+class FailingOpenAiClient:
+    def __init__(self):
+        self.completions = FailingChatCompletions()
+        self.chat = SimpleNamespace(completions=self.completions)
+
+
+class FakeTranscriptions:
+    def __init__(self):
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return SimpleNamespace(
+            text="hello",
+            segments=[],
+            language=kwargs.get("language", "unknown"),
+        )
+
+
+class FakeFptClient:
+    def __init__(self):
+        self.transcriptions = FakeTranscriptions()
+        self.audio = SimpleNamespace(transcriptions=self.transcriptions)
 
 
 class InstantQualityTranslator:
@@ -149,16 +243,35 @@ class InstantQualityTranslator:
     def translate(self, _context):
         return SimpleNamespace(translated_text=self.text, timed_out=False)
 
+    def stream_translate(self, _context):
+        words = self.text.split()
+        for index, word in enumerate(words):
+            yield word + (" " if index < len(words) - 1 else "")
+
 
 class SlowQualityTranslator(InstantQualityTranslator):
     def translate(self, context):
         time.sleep(0.05)
         return super().translate(context)
 
+    def stream_translate(self, context):
+        time.sleep(0.05)
+        yield from super().stream_translate(context)
+
 
 class NetworkFailQualityTranslator:
     def translate(self, _context):
         raise ConnectionError("connection lost")
+
+    def stream_translate(self, _context):
+        raise ConnectionError("connection lost")
+        yield
+
+
+class PartialFailQualityTranslator:
+    def stream_translate(self, _context):
+        yield "partial quality "
+        raise ConnectionError("connection lost during stream")
 
 
 class UnavailableTranslator:
@@ -167,9 +280,19 @@ class UnavailableTranslator:
 
 
 class SlowFastTranslator:
+    def __init__(self):
+        self.calls = 0
+
     def translate(self, text, source_lang="vi", target_lang="en"):
+        self.calls += 1
         time.sleep(0.25)
         return SimpleNamespace(source_text=text, translated_text="slow fast")
+
+    def stream_translate(self, text, source_lang="vi", target_lang="en"):
+        self.calls += 1
+        time.sleep(0.25)
+        yield "slow "
+        yield "fast"
 
 
 class FakeWs:
@@ -210,7 +333,10 @@ def make_split_audio_pipeline():
 
 
 def make_fast_translator():
-    return FastPathTranslator(tokenizer=FakeTokenizer(), model=FakeSeq2SeqModel())
+    return FastPathTranslator(
+        client=FakeOpenAiClient(content="hello KPI"),
+        model_name="fast-test-model",
+    )
 
 
 def test_health_monitor_basic():
@@ -393,7 +519,9 @@ def test_fpt_asr_failure_does_not_fallback_to_local():
     os.environ["FPT_ASR"] = "true"
     try:
         engine = ASREngine(model=FakeWhisperModel())
-        engine._transcribe_fpt = lambda *_args: (_ for _ in ()).throw(RuntimeError("api failed"))
+        engine._transcribe_fpt = lambda *_args, **_kwargs: (
+            _ for _ in ()
+        ).throw(RuntimeError("api failed"))
         segment = SimpleNamespace(audio=np.ones(16000, dtype=np.float32), is_speech=True)
         try:
             engine.transcribe_stream(segment)
@@ -406,6 +534,71 @@ def test_fpt_asr_failure_does_not_fallback_to_local():
             os.environ.pop("FPT_ASR", None)
         else:
             os.environ["FPT_ASR"] = previous
+
+
+def test_fpt_asr_uses_session_language_and_caches_probe():
+    with patch.dict(
+        os.environ,
+        {
+            "FPT_ASR": "true",
+            "FPT_API_KEY": "test-key",
+            "WHISPER_LANGUAGE": "vi",
+        },
+    ):
+        client = FakeFptClient()
+        engine = ASREngine()
+        engine._fpt_client = client
+
+        assert engine.preflight().startswith("fpt:")
+        assert engine.preflight().startswith("fpt:")
+        assert len(client.transcriptions.calls) == 1
+
+        segment = SimpleNamespace(
+            audio=np.ones(16000, dtype=np.float32),
+            is_speech=True,
+        )
+        result = engine.transcribe_stream(segment, language="en")
+
+    assert result.text == "hello"
+    assert client.transcriptions.calls[-1]["language"] == "en"
+
+
+def test_translation_preflights_probe_once():
+    fast_client = FakeOpenAiClient(content="Hello.")
+    fast = FastPathTranslator(
+        client=fast_client,
+        model_name="fast-test-model",
+    )
+    assert fast.preflight() == "fpt-fast:fast-test-model"
+    assert fast.preflight() == "fpt-fast:fast-test-model"
+    assert len(fast_client.completions.calls) == 1
+
+    quality_client = FakeOpenAiClient(content="Hello.")
+    quality = QualityPathTranslator(
+        client=quality_client,
+        model="quality-test-model",
+    )
+    assert quality.preflight() == "quality:quality-test-model"
+    assert quality.preflight() == "quality:quality-test-model"
+    assert len(quality_client.completions.calls) == 1
+
+
+def test_failed_translation_preflight_is_cached():
+    client = FailingOpenAiClient()
+    translator = FastPathTranslator(
+        client=client,
+        model_name="unavailable-test-model",
+    )
+
+    for _attempt in range(2):
+        try:
+            translator.preflight()
+        except ModelUnavailableError:
+            pass
+        else:
+            raise AssertionError("Unavailable remote model must fail preflight")
+
+    assert client.completions.calls == 1
 
 
 def test_audio_denoise_channel_diarization_and_overlap():
@@ -448,6 +641,38 @@ def test_quality_path_uses_openai_compatible_client():
     user_prompt = client.completions.last_kwargs["messages"][1]["content"]
     assert "KPI: Key Performance Indicator (VI:" in user_prompt
     assert "('Key Performance Indicator'" not in user_prompt
+
+
+def test_translation_paths_yield_provider_deltas():
+    fast_client = FakeOpenAiClient(
+        content="hello world",
+        stream_chunks=["hel", "lo ", "world"],
+    )
+    fast = FastPathTranslator(
+        client=fast_client,
+        model_name="fast-test-model",
+    )
+    assert list(fast.stream_translate("xin chao", "vi", "en")) == [
+        "hel",
+        "lo ",
+        "world",
+    ]
+    assert fast_client.completions.last_kwargs["stream"] is True
+
+    quality_client = FakeOpenAiClient(
+        content="quality final",
+        stream_chunks=["quality", " final"],
+    )
+    quality = QualityPathTranslator(
+        client=quality_client,
+        model="quality-test-model",
+    )
+    assert list(
+        quality.stream_translate(
+            QualityContext(asr_text="xin chao"),
+        ),
+    ) == ["quality", " final"]
+    assert quality_client.completions.last_kwargs["stream"] is True
 
 
 def test_quality_path_reads_fpt_ai_factory_env():
@@ -510,16 +735,20 @@ def test_worker_session_translation_with_injected_models():
     worker_session.rag = RAGEngine(encoder=FakeEncoder(), db=FakeDb())
     translated = asyncio.run(worker_session.translate_dual("xin chao KPI", "u1"))
     assert translated == "hello KPI (Key Performance Indicator) translated by llm"
-    assert [event["type"] for event in worker_session.ws.events if event["type"].startswith("translate")] == [
-        "translate.token",
-        "translate.token",
-        "translate.done",
+    translation_events = [
+        event["type"]
+        for event in worker_session.ws.events
+        if event["type"].startswith("translate")
     ]
+    assert translation_events[-1] == "translate.done"
+    assert translation_events.count("translate.done") == 1
+    assert "translate.token" in translation_events
 
 
-def test_quality_result_can_finish_before_slow_fast_path():
+def test_quality_success_does_not_start_fast_fallback():
     worker_session = PipelineSession(FakeWs(), "room", "client")
-    worker_session.fast = SlowFastTranslator()
+    fast = SlowFastTranslator()
+    worker_session.fast = fast
     worker_session.quality = InstantQualityTranslator("quality wins")
     worker_session.rag = RAGEngine(encoder=FakeEncoder(), db=FakeDb())
 
@@ -527,7 +756,8 @@ def test_quality_result_can_finish_before_slow_fast_path():
     event_types = [event["type"] for event in worker_session.ws.events]
     assert translated == "quality wins"
     assert "translate.done" in event_types
-    assert "translate.token" not in event_types
+    assert "translate.token" in event_types
+    assert fast.calls == 0
 
 
 def test_quality_network_failure_emits_status_and_uses_fast_path():
@@ -541,6 +771,40 @@ def test_quality_network_failure_emits_status_and_uses_fast_path():
     assert translated == "hello KPI (Key Performance Indicator)"
     assert status["level"] == int(FallbackLevel.OFFLINE_MODE)
     assert status["networkOk"] is False
+
+
+def test_partial_quality_stream_resets_before_fast_fallback():
+    worker_session = PipelineSession(FakeWs(), "room", "client")
+    worker_session.fast = FastPathTranslator(
+        client=FakeOpenAiClient(
+            content="fallback translation",
+            stream_chunks=["fallback ", "translation"],
+        ),
+        model_name="fast-test-model",
+    )
+    worker_session.quality = PartialFailQualityTranslator()
+    worker_session.rag = RAGEngine(encoder=FakeEncoder(), db=FakeDb())
+
+    translated = asyncio.run(
+        worker_session.translate_dual("xin chao", "u1"),
+    )
+    tokens = [
+        event
+        for event in worker_session.ws.events
+        if event["type"] == "translate.token"
+    ]
+
+    assert translated == "fallback translation"
+    assert tokens[0]["token"] == "partial quality "
+    assert "reset" not in tokens[0]
+    assert tokens[1] == {
+        "type": "translate.token",
+        "token": "fallback ",
+        "utteranceId": "u1",
+        "reset": True,
+    }
+    assert tokens[2]["token"] == "translation"
+    assert "reset" not in tokens[2]
 
 
 def test_worker_revision_overlap_and_status_events():
@@ -641,6 +905,7 @@ async def _websocket_worker_contract():
         assert ready["ready"] is True
         assert ready["speaker"] == "en"
         assert ready["languagePair"] == "vi-en"
+        assert ready["externalApisProbed"] is True
 
         samples = np.ones(FINAL_BYTES // 2, dtype=np.int16) * 1200
         await _client_send_frame(writer, samples.tobytes(), opcode=0x2)
@@ -728,12 +993,15 @@ if __name__ == "__main__":
     test_pipeline_error_event_hides_internal_details()
     test_worker_rejects_readiness_without_a_translation_path()
     test_fpt_asr_failure_does_not_fallback_to_local()
+    test_fpt_asr_uses_session_language_and_caches_probe()
+    test_translation_preflights_probe_once()
+    test_failed_translation_preflight_is_cached()
     test_audio_denoise_channel_diarization_and_overlap()
     test_quality_path_uses_openai_compatible_client()
     test_quality_path_reads_fpt_ai_factory_env()
     test_revision_and_minutes()
     test_worker_session_translation_with_injected_models()
-    test_quality_result_can_finish_before_slow_fast_path()
+    test_quality_success_does_not_start_fast_fallback()
     test_quality_network_failure_emits_status_and_uses_fast_path()
     test_worker_revision_overlap_and_status_events()
     test_worker_combines_multiple_audio_segments()

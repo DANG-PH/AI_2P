@@ -66,7 +66,7 @@ def main() -> None:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="preload local runtime dependencies and exit",
+        help="preload runtime dependencies, probe configured AI APIs, and exit",
     )
     parser.add_argument("--ingest-doc", action="append", default=[], help="ingest a document into local RAG")
     args = parser.parse_args()
@@ -96,7 +96,7 @@ def main() -> None:
         )
         if warnings:
             print(f"Readiness warnings: {', '.join(warnings)}")
-        print("Local runtime dependencies loaded. External FPT APIs were not called.")
+        print("Runtime dependencies loaded and configured external AI APIs probed.")
         return
 
     asyncio.run(run_server(args.host, args.port))

@@ -1,8 +1,11 @@
 """Whisper-backed ASR streaming facade."""
 
 from dataclasses import dataclass, field
+import io
 import os
+import threading
 from typing import List, Optional
+import wave
 
 import numpy as np
 
@@ -57,42 +60,75 @@ class ASREngine:
         self._counter = 0
         self._use_fpt_asr = os.getenv("FPT_ASR", "").lower() == "true"
         self._fpt_client = None
+        self._preflight_lock = threading.Lock()
+        self._preflight_result: str | None = None
 
     def preflight(self) -> str:
-        """Validate and load the ASR path used by this session."""
+        """Validate the configured ASR path once, including remote access."""
 
-        if self._use_fpt_asr:
-            api_key = (
-                os.getenv("FPT_API_KEY")
-                or os.getenv("FPT_AI_FACTORY_API_KEY")
-                or os.getenv("FPT_AI")
-            )
-            if not api_key or api_key.startswith("replace-with-"):
-                raise ModelUnavailableError(
-                    "A valid FPT API key is required when FPT_ASR=true.",
+        if self._preflight_result is not None:
+            return self._preflight_result
+
+        with self._preflight_lock:
+            if self._preflight_result is not None:
+                return self._preflight_result
+
+            if self._use_fpt_asr:
+                api_key = (
+                    os.getenv("FPT_API_KEY")
+                    or os.getenv("FPT_AI_FACTORY_API_KEY")
+                    or os.getenv("FPT_AI")
                 )
+                if (
+                    not api_key
+                    or api_key.startswith("replace-with-")
+                    or api_key == "missing"
+                ):
+                    raise ModelUnavailableError(
+                        "A valid FPT API key is required when FPT_ASR=true.",
+                    )
 
-            if self._fpt_client is None:
-                from config.fpt_models import get_fpt_client
+                if self._fpt_client is None:
+                    from config.fpt_models import get_fpt_client
 
-                self._fpt_client = get_fpt_client()
+                    self._fpt_client = get_fpt_client()
 
-            from config.fpt_models import MODELS as FPT
+                from config.fpt_models import MODELS as FPT
 
-            model_name = os.getenv("FPT_ASR_MODEL", FPT["asr"])
-            return f"fpt:{model_name}"
+                model_name = os.getenv("FPT_ASR_MODEL", FPT["asr"])
+                try:
+                    self._transcribe_fpt(
+                        np.zeros(8000, dtype=np.float32),
+                        {},
+                        {},
+                        language=None,
+                        timeout=float(
+                            os.getenv("FPT_ASR_PREFLIGHT_TIMEOUT", "10"),
+                        ),
+                    )
+                except Exception as error:
+                    raise ModelUnavailableError(
+                        f"FPT ASR model '{model_name}' failed its readiness probe: {error}",
+                    ) from error
+                self._preflight_result = f"fpt:{model_name}"
+            else:
+                self._ensure_model()
+                self._preflight_result = f"whisper:{self.model_name}"
 
-        self._ensure_model()
-        return f"whisper:{self.model_name}"
+            return self._preflight_result
 
     def transcribe_stream(
         self,
         audio_segment,
         glossary: dict | None = None,
         acronym_table: dict | None = None,
+        language: str | None = None,
     ) -> ASRSegment:
         self._counter += 1
         segment_id = getattr(audio_segment, "segment_id", "") or f"asr-{self._counter}"
+        effective_language = (
+            language if language in ("vi", "en") else self.language
+        )
 
         if not getattr(audio_segment, "is_speech", True):
             return ASRSegment(segment_id=segment_id, stability_score=0.0)
@@ -103,14 +139,26 @@ class ASREngine:
 
         if self._use_fpt_asr:
             try:
-                result = self._transcribe_fpt(audio, glossary, acronym_table)
+                result = self._transcribe_fpt(
+                    audio,
+                    glossary,
+                    acronym_table,
+                    language=effective_language,
+                )
             except Exception as error:
                 raise ModelUnavailableError(f"FPT ASR failed: {error}") from error
         else:
-            result = self._transcribe_local(audio, glossary, acronym_table)
+            result = self._transcribe_local(
+                audio,
+                glossary,
+                acronym_table,
+                language=effective_language,
+            )
 
         text = str(result.get("text", "")).strip()
-        detected_language = str(result.get("language") or self.language or "unknown")
+        detected_language = str(
+            result.get("language") or effective_language or "unknown",
+        )
         words = self._extract_words(result, detected_language)
 
         return ASRSegment(
@@ -125,15 +173,21 @@ class ASREngine:
             timestamp_end=float(getattr(audio_segment, "timestamp_end", 0.0) or 0.0),
         )
 
-    def _transcribe_local(self, audio, glossary, acronym_table):
+    def _transcribe_local(
+        self,
+        audio,
+        glossary,
+        acronym_table,
+        language: str | None = None,
+    ):
         model = self._ensure_model()
         options = {
             "fp16": self.device == "cuda",
             "verbose": False,
             "word_timestamps": True,
         }
-        if self.language:
-            options["language"] = self.language
+        if language:
+            options["language"] = language
         prompt = self._prompt(glossary or {}, acronym_table or {})
         if prompt:
             options["initial_prompt"] = prompt
@@ -144,10 +198,14 @@ class ASREngine:
             options.pop("word_timestamps", None)
             return model.transcribe(audio, **options)
 
-    def _transcribe_fpt(self, audio, glossary, acronym_table):
-        import io
-        import wave
-
+    def _transcribe_fpt(
+        self,
+        audio,
+        glossary,
+        acronym_table,
+        language: str | None = None,
+        timeout: float = 30,
+    ):
         if audio.dtype == np.float32:
             audio_int16 = (audio * 32767).astype(np.int16)
         else:
@@ -174,10 +232,10 @@ class ASREngine:
             "model": model_name,
             "file": ("speech.wav", wav_bytes, "audio/wav"),
             "response_format": "verbose_json",
-            "timeout": 30,
+            "timeout": timeout,
         }
-        if self.language:
-            kwargs["language"] = self.language
+        if language:
+            kwargs["language"] = language
         if prompt:
             kwargs["prompt"] = prompt
 
@@ -198,7 +256,7 @@ class ASREngine:
         return {
             "text": getattr(response, "text", ""),
             "segments": getattr(response, "segments", []),
-            "language": getattr(response, "language", self.language or "unknown"),
+            "language": getattr(response, "language", language or "unknown"),
         }
 
     def _prompt(self, glossary: dict, acronym_table: dict) -> str:

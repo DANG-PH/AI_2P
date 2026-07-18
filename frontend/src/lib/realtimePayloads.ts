@@ -112,6 +112,7 @@ export const parseTranslateToken = (
         type: 'translate.token',
         token,
         utteranceId,
+        ...(payload.reset === true ? { reset: true } : {}),
         ...participantMetadata(payload),
       }
     : null

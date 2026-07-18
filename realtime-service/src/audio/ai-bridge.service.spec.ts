@@ -7,8 +7,9 @@ import type { AiEventPayload } from '../common/types/events.type';
 type MockWebSocket = EventEmitter & {
   url: URL;
   readyState: number;
-  send: jest.Mock;
-  close: jest.Mock;
+  sent: string[];
+  send: jest.Mock<(data: string) => void>;
+  close: jest.Mock<() => void>;
 };
 
 type MockWebSocketState = {
@@ -29,7 +30,9 @@ jest.mock('ws', () => {
 
     readonly url: URL;
     readyState = TestWebSocket.CONNECTING;
+    readonly sent: string[] = [];
     readonly send = jest.fn((data: string) => {
+      this.sent.push(data);
       let message: unknown;
       try {
         message = JSON.parse(String(data));
@@ -169,6 +172,39 @@ describe('AiBridgeService', () => {
     });
   });
 
+  it('preserves the reset marker on streamed translation deltas', async () => {
+    await bridge.openSession('room-1', 'client-b', {
+      domain: 'business',
+      languagePair: 'vi-en',
+      speaker: 'en',
+    });
+
+    const receivedEvent = new Promise<AiEventPayload>((resolve) => {
+      eventEmitter.once('ai.event', resolve);
+    });
+
+    sockets[0].emit(
+      'message',
+      Buffer.from(
+        JSON.stringify({
+          type: 'translate.token',
+          utteranceId: 'utterance-1',
+          token: 'fallback ',
+          reset: true,
+        }),
+      ),
+    );
+
+    await expect(receivedEvent).resolves.toMatchObject({
+      type: 'translate.token',
+      sessionId: 'room-1',
+      clientId: 'client-b',
+      utteranceId: 'utterance-1',
+      token: 'fallback ',
+      reset: true,
+    });
+  });
+
   it('waits for a matching worker readiness ACK and sends the initial speaker', async () => {
     mockState.autoReady = false;
     let resolved = false;
@@ -185,9 +221,10 @@ describe('AiBridgeService', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(resolved).toBe(false);
-    const initMessage = JSON.parse(
-      String(sockets[0].send.mock.calls[0][0]),
-    ) as { type: string; config: { speaker: string } };
+    const initMessage = JSON.parse(sockets[0].sent[0]) as {
+      type: string;
+      config: { speaker: string };
+    };
     expect(initMessage).toMatchObject({
       type: 'session.init',
       config: { speaker: 'en' },
@@ -226,10 +263,42 @@ describe('AiBridgeService', () => {
 
     expect(sockets).toHaveLength(2);
     expect(sockets[0].close).toHaveBeenCalledTimes(1);
-    const replacementInit = JSON.parse(
-      String(sockets[1].send.mock.calls[0][0]),
-    ) as { config: { speaker: string } };
+    const replacementInit = JSON.parse(sockets[1].sent[0]) as {
+      config: { speaker: string };
+    };
     expect(replacementInit.config.speaker).toBe('en');
+  });
+
+  it('rejects remote capabilities that were not actually probed', async () => {
+    mockState.autoReady = false;
+    const opening = bridge.openSession('room-1', 'client-a', {
+      domain: 'business',
+      languagePair: 'vi-en',
+      speaker: 'vi',
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    sockets[0].emit(
+      'message',
+      Buffer.from(
+        JSON.stringify({
+          type: 'session.ready',
+          ready: true,
+          speaker: 'vi',
+          languagePair: 'vi-en',
+          capabilities: {
+            asr: 'fpt:FPT.AI-whisper-large-v3-turbo',
+            fastTranslation: 'fpt-fast:DeepSeek-V4-Flash',
+          },
+          warnings: [],
+          externalApisProbed: false,
+        }),
+      ),
+    );
+
+    await expect(opening).rejects.toThrow(
+      'AI worker readiness ACK did not verify external capabilities',
+    );
   });
 
   it('rejects a negative worker readiness ACK', async () => {

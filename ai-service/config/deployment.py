@@ -16,13 +16,13 @@ class DeploymentConfig:
         defaults = {
             "edge": {
                 "asr": "whisper-small",
-                "fast_translation": "nllb-600m-distilled",
-                "quality_translation": "local-llm-7b-int4",
+                "fast_translation": FPT["fast_translation"],
+                "quality_translation": FPT["quality_llm"],
                 "embedding": "sentence-transformers/all-MiniLM-L6-v2",
             },
             "server": {
                 "asr": FPT["asr"],
-                "fast_translation": "nllb-3.3b",
+                "fast_translation": FPT["fast_translation"],
                 "quality_translation": FPT["quality_llm"],
                 "embedding": FPT["embedding"],
                 "reranker": FPT["reranker"],

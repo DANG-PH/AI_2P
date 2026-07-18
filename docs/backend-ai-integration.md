@@ -33,10 +33,12 @@ FPT_API_KEY=replace-with-your-key
 
 FPT_ASR=true
 FPT_ASR_MODEL=FPT.AI-whisper-large-v3-turbo
-WHISPER_LANGUAGE=vi
 
 FPT_AI_FACTORY_MODEL=SaoLa3.1-medium
 FPT_AI_FACTORY_TIMEOUT=1.0
+FPT_FAST_MT_MODEL=DeepSeek-V4-Flash
+FAST_MT_TIMEOUT=3.0
+FPT_ASR_PREFLIGHT_TIMEOUT=10
 
 FPT_EMBEDDING=true
 FPT_EMBEDDING_MODEL=Vietnamese_Embedding
@@ -47,8 +49,9 @@ FPT_RERANKER_MODEL=bge-reranker-v2-m3
 `FPT_ASR=true` bắt buộc ASR đi qua FPT. Nếu FPT ASR lỗi, worker phát
 event lỗi thay vì âm thầm sử dụng Whisper local.
 
-`FAST_MT_MODEL` vẫn là fast translation chạy bằng Hugging Face/NLLB local.
-Quality translation sử dụng FPT AI Marketplace.
+Quality translation dùng `FPT_AI_FACTORY_MODEL`. Khi quality path lỗi hoặc
+timeout, worker mới gọi tuần tự `FPT_FAST_MT_MODEL`; hai model không còn được
+gọi song song cho cùng một lượt nói.
 
 ### Realtime service
 
@@ -88,11 +91,12 @@ npm run start:dev
 
 `python main.py --check` chạy cùng readiness policy với phiên thật: VAD và ASR
 phải sẵn sàng, đồng thời phải có ít nhất một đường dịch hoạt động. Local
-Whisper/NLLB được load thật; credential và client dependency của FPT được kiểm
-tra nhưng lệnh này không gọi API FPT. Production giữ `AUDIO_VAD=silero`; khi
-cần cứu demo tạm thời có thể dùng
+Whisper được load thật; các model FPT đã cấu hình nhận một readiness request
+nhỏ với timeout. Kết quả probe được cache trong suốt vòng đời worker, không gọi
+lại theo từng meeting. Production giữ `AUDIO_VAD=silero`; khi cần cứu demo tạm
+thời có thể dùng
 `AUDIO_VAD=energy`, là detector năng lượng NumPy có độ chính xác thấp hơn và
-không được tự động bật. Chế độ này chỉ thay thế VAD; Whisper/NLLB local vẫn cần
+không được tự động bật. Chế độ này chỉ thay thế VAD; Whisper local vẫn cần
 Torch, còn các đường ASR/dịch FPT từ xa vẫn có thể nhận audio. Lần preload
 Silero đầu tiên có thể tải model qua `torch.hub`; cần giữ cache Torch giữa các
 lần deploy.
@@ -108,7 +112,7 @@ Frontend kết nối Socket.IO tới `realtime-service` với các query paramet
 | `domain` | Không | `business` |
 | `languagePair` | Không | `vi-en` |
 | `displayName` | Không | `clientId` |
-| `localLanguage` | Không | Không có |
+| `localLanguage` | Không | `vi` |
 
 Backend mở một WebSocket riêng tới AI worker cho mỗi cặp
 `sessionId/clientId`:
@@ -143,18 +147,19 @@ worker trả ACK nội bộ:
   "capabilities": {
     "vad": "silero",
     "asr": "fpt:FPT.AI-whisper-large-v3-turbo",
-    "fastTranslation": "nllb:facebook/nllb-200-distilled-600M",
+    "fastTranslation": "fpt-fast:DeepSeek-V4-Flash",
     "qualityTranslation": "quality:SaoLa3.1-medium"
   },
   "warnings": [],
-  "externalApisProbed": false
+  "externalApisProbed": true
 }
 ```
 
 Gateway chỉ phát `session.ready` cho frontend sau ACK hợp lệ và khớp
-`speaker/languagePair`. Thời gian chờ readiness mặc định là 120 giây, cấu hình
-bằng `AI_READY_TIMEOUT_MS` trong khoảng 1–300 giây. ACK âm, sai config, timeout
-hoặc WebSocket đóng sớm đều làm frontend nhận:
+`speaker/languagePair`. Nếu ACK khai báo capability FPT/quality, gateway còn
+bắt buộc `externalApisProbed=true`. Thời gian chờ readiness mặc định là 120
+giây, cấu hình bằng `AI_READY_TIMEOUT_MS` trong khoảng 1–300 giây. ACK âm, sai
+config, timeout hoặc WebSocket đóng sớm đều làm frontend nhận:
 
 ```json
 {
@@ -349,6 +354,7 @@ manager và chỉ cho `ai-service` outbound tới `mkp-api.fptcloud.com:443`.
 - [ ] AI worker lắng nghe tại port `8765`.
 - [ ] `AI_WS_URL` trỏ đúng hostname từ môi trường chạy backend.
 - [ ] `FPT_ASR=true` và API key có quyền dùng model ASR.
+- [ ] `python main.py --check` probe thành công ASR và ít nhất một model dịch.
 - [ ] Audio là raw PCM16 mono 16 kHz.
 - [ ] Backend mở một AI WebSocket cho mỗi client trong session.
 - [ ] `session.init` chứa đúng speaker và gateway nhận readiness ACK tương ứng.

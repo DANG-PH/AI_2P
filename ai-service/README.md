@@ -8,7 +8,8 @@ The worker now expects real AI backends:
 - Audio: numpy noise gate or optional `noisereduce`, strict Silero VAD through
   `torch.hub`, an explicit NumPy energy-VAD emergency mode, channel-based
   speaker hints, and optional pyannote diarization
-- Fast translation: NLLB/seq2seq through HuggingFace `transformers`
+- Fast/fallback translation: FPT AI Marketplace through an OpenAI-compatible
+  chat API
 - Quality translation: FPT AI Factory or any OpenAI-compatible chat API
 - RAG: `sentence-transformers` embeddings plus local Qdrant, with TXT/MD/JSON,
   PDF, DOCX, and PPTX ingest
@@ -46,16 +47,17 @@ python -m tests.test_smoke
 VAD and ASR must be ready, and at least one translation path must be usable.
 With the default `AUDIO_VAD=silero`, it exits non-zero when Torch is missing or
 the Silero model cannot be loaded, instead of waiting for the first audio turn
-to fail. Local Whisper/NLLB models are loaded during this check. External FPT
-credentials and client dependencies are validated, but the APIs are not called.
-The first successful preflight may download models; keep their caches between
-deployments.
+to fail. Local Whisper is loaded during this check. Configured FPT ASR and
+translation models receive a small, timeout-bounded readiness request;
+successful results are cached for the lifetime of the worker, so meetings do
+not repeat the probe. The first successful preflight may download local models;
+keep their caches between deployments.
 
 For an emergency CPU-only demo while Torch/Silero is being repaired, set
 `AUDIO_VAD=energy`. This bypasses Torch only for VAD and uses a coarser NumPy
 energy detector, allowing configured remote FPT ASR/translation paths to keep
-receiving audio. Local Whisper/NLLB paths still require Torch. The fallback is
-never selected automatically; production remains strict by default.
+receiving audio. Local Whisper still requires Torch. The fallback is never
+selected automatically; production remains strict by default.
 
 Detailed pipeline exceptions are written to the AI worker log with `sessionId`,
 `clientId`, and error code. Client events contain a stable public message rather
@@ -81,6 +83,8 @@ AI_WS_PORT=8765
 WHISPER_MODEL=large-v3
 WHISPER_MODEL_DIR=./models/whisper
 WHISPER_DEVICE=cpu
+# Live sessions override this per client from localLanguage/speaker.
+# WHISPER_LANGUAGE=vi
 
 AUDIO_DENOISE=gate
 AUDIO_VAD=silero
@@ -88,13 +92,17 @@ AUDIO_DIARIZATION=off
 PYANNOTE_MODEL=pyannote/speaker-diarization-3.1
 # PYANNOTE_AUTH_TOKEN=replace-with-your-huggingface-token
 
-FAST_MT_MODEL=facebook/nllb-200-distilled-600M
-FAST_MT_DEVICE=cpu
+FPT_FAST_MT_MODEL=DeepSeek-V4-Flash
+FAST_MT_TIMEOUT=3.0
+FPT_ASR_PREFLIGHT_TIMEOUT=10
 
 FPT_AI_FACTORY_BASE_URL=https://your-fpt-ai-factory-endpoint/v1
 FPT_AI_FACTORY_API_KEY=replace-with-your-key
 FPT_AI_FACTORY_MODEL=your-fpt-model
 FPT_AI_FACTORY_TIMEOUT=1.0
+
+FPT_ASR=true
+FPT_ASR_MODEL=FPT.AI-whisper-large-v3-turbo
 
 # Optional non-FPT aliases:
 # QUALITY_LLM_BASE_URL=http://localhost:8000/v1
@@ -144,7 +152,7 @@ config/       deployment, glossary, acronym loading
 rag/          SentenceTransformers + Qdrant retrieval
 audio/        PCM normalization + Silero VAD
 asr/          Whisper ASR plus revision handler
-translation/  NLLB fast path + FPT/OpenAI-compatible quality path
+translation/  FPT/OpenAI-compatible quality and fallback paths
 fallback/     health monitor and degradation levels
 session/      sliding window, minutes, export
 worker.py     WebSocket worker contract for realtime-service

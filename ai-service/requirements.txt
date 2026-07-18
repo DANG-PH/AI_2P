@@ -6,11 +6,7 @@ torch>=2.0
 openai-whisper>=20231117
 # faster-whisper  # ponytail: install only when CTranslate2 speedup is needed.
 
-# Translation - Fast Path (NLLB)
-transformers>=4.35
-sentencepiece
-
-# LLM - Quality Path (FPT AI Factory, OpenAI-compatible API)
+# Translation (FPT AI Factory, OpenAI-compatible API)
 openai>=1.30
 
 # RAG - Vector DB, embedding, and document parsing

@@ -1,7 +1,9 @@
 """Quality-path translation through an OpenAI-compatible LLM API."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 import os
+import threading
 import time
 from typing import List
 
@@ -51,7 +53,6 @@ class QualityPathTranslator:
             or ("1.0" if tier == "server" else "1.5"),
         )
         self.model = model or os.getenv("FPT_AI_FACTORY_MODEL") or os.getenv("QUALITY_LLM_MODEL") or FPT["quality_llm"]
-        self.fallback_model = os.getenv("FPT_QUALITY_FALLBACK") or FPT["quality_llm_fallback"]
         self.base_url = os.getenv("FPT_AI_FACTORY_BASE_URL") or os.getenv("QUALITY_LLM_BASE_URL") or FPT_BASE_URL
         self.api_key = (
             os.getenv("FPT_AI_FACTORY_API_KEY")
@@ -60,40 +61,66 @@ class QualityPathTranslator:
             or FPT_API_KEY
         )
         self._client = client
+        self._preflight_lock = threading.Lock()
+        self._preflight_result: str | None = None
+        self._preflight_error: ModelUnavailableError | None = None
 
     def preflight(self) -> str:
-        """Validate the configured quality-translation client."""
+        """Probe the configured remote model once and cache the result."""
 
-        if self._client is None and (
-            not self.api_key or self.api_key.startswith("replace-with-")
-        ):
-            raise ModelUnavailableError(
-                "A valid API key is required for quality-path translation.",
-            )
-        self._ensure_client()
-        return f"quality:{self.model}"
+        if self._preflight_result is not None:
+            return self._preflight_result
+        if self._preflight_error is not None:
+            raise self._preflight_error
+
+        with self._preflight_lock:
+            if self._preflight_result is not None:
+                return self._preflight_result
+            if self._preflight_error is not None:
+                raise self._preflight_error
+
+            try:
+                if self._client is None and (
+                    not self.api_key
+                    or self.api_key.startswith("replace-with-")
+                    or self.api_key == "missing"
+                ):
+                    raise ModelUnavailableError(
+                        "A valid API key is required for quality-path translation.",
+                    )
+                result = self.translate(
+                    QualityContext(
+                        asr_text="Xin chào.",
+                        source_lang="vi",
+                        target_lang="en",
+                    ),
+                )
+                if not result.translated_text:
+                    raise ModelUnavailableError(
+                        f"Quality translation model '{self.model}' returned an "
+                        "empty readiness response.",
+                    )
+            except Exception as error:
+                if isinstance(error, ModelUnavailableError):
+                    self._preflight_error = error
+                    raise
+                self._preflight_error = ModelUnavailableError(
+                    f"Quality translation model '{self.model}' failed its "
+                    f"readiness probe: {error}",
+                )
+                raise self._preflight_error from error
+            self._preflight_result = f"quality:{self.model}"
+            return self._preflight_result
 
     def translate(self, context: QualityContext) -> QualityResult:
         started = time.perf_counter()
         client = self._ensure_client()
-        try:
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=self._messages(context),
-                temperature=0,
-                timeout=self._timeout,
-            )
-        except Exception:
-            # ponytail: fallback to faster FPT model on primary timeout/error
-            if self.fallback_model and self.fallback_model != self.model:
-                response = client.chat.completions.create(
-                    model=self.fallback_model,
-                    messages=self._messages(context),
-                    temperature=0,
-                    timeout=self._timeout,
-                )
-            else:
-                raise
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=self._messages(context),
+            temperature=0,
+            timeout=self._timeout,
+        )
         translated = (response.choices[0].message.content or "").strip()
         latency_ms = (time.perf_counter() - started) * 1000
         return QualityResult(
@@ -102,6 +129,33 @@ class QualityPathTranslator:
             latency_ms=latency_ms,
             timed_out=latency_ms > self._timeout * 1000,
         )
+
+    def stream_translate(self, context: QualityContext) -> Iterator[str]:
+        """Yield translation deltas as the remote model generates them."""
+
+        client = self._ensure_client()
+        response = None
+        try:
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=self._messages(context),
+                temperature=0,
+                timeout=self._timeout,
+                stream=True,
+            )
+            for chunk in response:
+                choices = getattr(chunk, "choices", None)
+                delta = getattr(choices[0], "delta", None) if choices else None
+                content = getattr(delta, "content", None)
+                if isinstance(content, str) and content:
+                    yield content
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
 
     def _ensure_client(self):
         if not self.model:

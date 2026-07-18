@@ -115,7 +115,9 @@ export const applyRealtimeTranscriptEvent = (
     case 'translate.token':
       nextTurn = {
         ...baseTurn,
-        translatedText: `${baseTurn.translatedText}${event.token}`,
+        translatedText: event.reset
+          ? event.token
+          : `${baseTurn.translatedText}${event.token}`,
         status: 'draft',
       }
       break

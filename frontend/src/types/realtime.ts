@@ -36,6 +36,7 @@ export interface SttFinalEvent {
 export interface TranslateTokenEvent {
   type: 'translate.token'
   token: string
+  reset?: boolean
   utteranceId: string
   clientId?: string | null
   displayName?: string | null

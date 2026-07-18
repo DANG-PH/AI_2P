@@ -9,8 +9,10 @@ translation, the fast path now reuses the same API with a fast/cheap model
 all -- only a lightweight HTTP client.
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 import os
+import threading
 import time
 
 from model_errors import ModelUnavailableError
@@ -58,14 +60,49 @@ class FastPathTranslator:
         )
         self.timeout = float(os.getenv("FAST_MT_TIMEOUT", str(DEFAULT_TIMEOUT)))
         self._client = client
+        self._preflight_lock = threading.Lock()
+        self._preflight_result: str | None = None
+        self._preflight_error: ModelUnavailableError | None = None
 
     def preflight(self) -> str:
-        """Initialize the lightweight HTTP client. No model weights are loaded."""
+        """Probe the configured remote model once and cache the result."""
 
-        self._ensure_client()
-        return f"fpt-fast:{self.model_name}"
+        if self._preflight_result is not None:
+            return self._preflight_result
+        if self._preflight_error is not None:
+            raise self._preflight_error
 
-    def translate(self, text: str, source_lang: str = "vi", target_lang: str = "en") -> TranslationResult:
+        with self._preflight_lock:
+            if self._preflight_result is not None:
+                return self._preflight_result
+            if self._preflight_error is not None:
+                raise self._preflight_error
+
+            try:
+                result = self.translate("Xin chào.", "vi", "en")
+                if not result.translated_text:
+                    raise ModelUnavailableError(
+                        f"FPT fast-path translation model '{self.model_name}' "
+                        "returned an empty readiness response.",
+                    )
+            except Exception as error:
+                if isinstance(error, ModelUnavailableError):
+                    self._preflight_error = error
+                    raise
+                self._preflight_error = ModelUnavailableError(
+                    f"FPT fast-path translation model '{self.model_name}' "
+                    f"failed its readiness probe: {error}",
+                )
+                raise self._preflight_error from error
+            self._preflight_result = f"fpt-fast:{self.model_name}"
+            return self._preflight_result
+
+    def translate(
+        self,
+        text: str,
+        source_lang: str = "vi",
+        target_lang: str = "en",
+    ) -> TranslationResult:
         started = time.perf_counter()
         text = text.strip()
         if not text:
@@ -78,17 +115,7 @@ class FastPathTranslator:
         try:
             response = client.chat.completions.create(
                 model=self.model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a real-time speech translator. Translate the user's "
-                            f"{source_name} text into {target_name}. Reply with ONLY the "
-                            "translation, no explanations, no quotes."
-                        ),
-                    },
-                    {"role": "user", "content": text},
-                ],
+                messages=self._messages(text, source_name, target_name),
                 temperature=0.0,
                 max_tokens=512,
                 timeout=self.timeout,
@@ -105,11 +132,78 @@ class FastPathTranslator:
             latency_ms=(time.perf_counter() - started) * 1000,
         )
 
+    def stream_translate(
+        self,
+        text: str,
+        source_lang: str = "vi",
+        target_lang: str = "en",
+    ) -> Iterator[str]:
+        """Yield translation deltas as the remote model generates them."""
+
+        text = text.strip()
+        if not text:
+            return
+
+        client = self._ensure_client()
+        source_name = self._language_name(source_lang)
+        target_name = self._language_name(target_lang)
+        response = None
+
+        try:
+            response = client.chat.completions.create(
+                model=self.model_name,
+                messages=self._messages(text, source_name, target_name),
+                temperature=0.0,
+                max_tokens=512,
+                timeout=self.timeout,
+                stream=True,
+            )
+            for chunk in response:
+                choices = getattr(chunk, "choices", None)
+                delta = getattr(choices[0], "delta", None) if choices else None
+                content = getattr(delta, "content", None)
+                if isinstance(content, str) and content:
+                    yield content
+        except Exception as error:
+            raise ModelUnavailableError(
+                f"FPT fast-path translation model '{self.model_name}' is unavailable: {error}",
+            ) from error
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
+    def _messages(
+        self,
+        text: str,
+        source_name: str,
+        target_name: str,
+    ) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "You are a real-time speech translator. Translate the user's "
+                    f"{source_name} text into {target_name}. Reply with ONLY the "
+                    "translation, no explanations, no quotes."
+                ),
+            },
+            {"role": "user", "content": text},
+        ]
+
     def _ensure_client(self):
         if self._client is not None:
             return self._client
 
-        if not self.base_url or not self.api_key:
+        if (
+            not self.base_url
+            or not self.api_key
+            or self.api_key.startswith("replace-with-")
+            or self.api_key == "missing"
+        ):
             raise ModelUnavailableError(
                 "FPT_AI_FACTORY_BASE_URL / FPT_AI_FACTORY_API_KEY (or FPT_BASE_URL / "
                 "FPT_API_KEY) must be set to use the FPT fast-path translator.",
