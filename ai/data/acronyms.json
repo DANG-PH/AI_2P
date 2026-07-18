@@ -1,0 +1,22 @@
+{
+  "KPI": {
+    "full": "Key Performance Indicator",
+    "vi": "Chỉ số hiệu suất chính",
+    "en": "Key Performance Indicator"
+  },
+  "MOU": {
+    "full": "Memorandum of Understanding",
+    "vi": "Biên bản ghi nhớ",
+    "en": "Memorandum of Understanding"
+  },
+  "ROI": {
+    "full": "Return on Investment",
+    "vi": "Lợi tức đầu tư",
+    "en": "Return on Investment"
+  },
+  "JV": {
+    "full": "Joint Venture",
+    "vi": "Liên doanh",
+    "en": "Joint Venture"
+  }
+}

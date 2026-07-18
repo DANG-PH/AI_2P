@@ -1,0 +1,26 @@
+# Core
+numpy>=1.24
+torch>=2.0
+
+# ASR
+openai-whisper>=20231117
+# faster-whisper  # ponytail: thay thế khi cần tốc độ, cài riêng vì phụ thuộc CTranslate2
+
+# Translation — Fast Path (NLLB)
+transformers>=4.35
+sentencepiece
+
+# LLM — Quality Path (FPT AI Factory, OpenAI-compatible API)
+openai>=1.30
+
+# RAG — Vector DB + Embedding
+qdrant-client>=1.9
+sentence-transformers>=2.2
+
+# Audio
+# silero-vad          # VAD (tải model qua torch.hub, không cần pip)
+# noisereduce         # Denoising đơn giản
+# webrtcvad           # Backup VAD
+
+# Utilities
+python-dotenv>=1.0

@@ -1,0 +1,26 @@
+# AI pipeline artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Model weights (lớn, không commit)
+models/*/
+!models/README.md
+
+# Vector DB local
+*.faiss
+chroma_db/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
