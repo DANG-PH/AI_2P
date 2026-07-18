@@ -71,7 +71,7 @@ const en = {
     'Name the meeting, choose your language, and add the business terms that should stay consistent.',
   'landing.stepInviteTitle': 'Invite the other person',
   'landing.stepInviteDescription':
-    'Share one room code. They join from their own device and confirm their speaking language.',
+    'Share the invite link. They confirm their name and speaking language before entering.',
   'landing.stepSpeakTitle': 'Speak naturally',
   'landing.stepSpeakDescription':
     'Follow translated turns as the meeting happens, with the original language always available.',
@@ -258,8 +258,9 @@ const en = {
   'meeting.skip': 'Skip to conversation',
   'meeting.active': 'Active meeting',
   'meeting.elapsed': 'Elapsed time {{time}}',
-  'meeting.roomCode': 'Room code',
-  'meeting.copyRoomCode': 'Copy room code {{code}}',
+  'meeting.inviteLink': 'Invite link',
+  'meeting.copyInviteLink': 'Copy meeting invite link',
+  'meeting.inviteCopied': 'Meeting invite link copied',
   'meeting.contextTitle': 'Meeting context',
   'meeting.contextDescription':
     'Participants, glossary, notes, and connection status.',
@@ -531,7 +532,7 @@ const vi = {
     'Đặt tên cuộc họp, chọn ngôn ngữ và thêm các thuật ngữ kinh doanh cần được giữ nhất quán.',
   'landing.stepInviteTitle': 'Mời người còn lại',
   'landing.stepInviteDescription':
-    'Chia sẻ một mã phòng. Họ tham gia từ thiết bị riêng và xác nhận ngôn ngữ sẽ nói.',
+    'Chia sẻ liên kết mời. Người nhận xác nhận tên và ngôn ngữ trước khi vào phòng.',
   'landing.stepSpeakTitle': 'Trò chuyện tự nhiên',
   'landing.stepSpeakDescription':
     'Theo dõi từng lượt dịch ngay khi cuộc họp diễn ra, với nội dung gốc luôn sẵn có.',
@@ -719,8 +720,9 @@ const vi = {
   'meeting.skip': 'Chuyển đến cuộc trò chuyện',
   'meeting.active': 'Cuộc họp đang diễn ra',
   'meeting.elapsed': 'Thời gian đã họp {{time}}',
-  'meeting.roomCode': 'Mã phòng',
-  'meeting.copyRoomCode': 'Sao chép mã phòng {{code}}',
+  'meeting.inviteLink': 'Liên kết mời',
+  'meeting.copyInviteLink': 'Sao chép liên kết mời họp',
+  'meeting.inviteCopied': 'Đã sao chép liên kết mời họp',
   'meeting.contextTitle': 'Thông tin cuộc họp',
   'meeting.contextDescription':
     'Người tham gia, thuật ngữ, ghi chú và trạng thái kết nối.',

@@ -1,4 +1,5 @@
-import { create } from 'zustand'
+import { create, type StateCreator } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import { createInitialMeeting } from '../data/initialMeeting'
 import { clamp, createEntityId } from '../lib/utils'
 import { getOrCreateClientId } from '../lib/meetingIdentity'
@@ -77,6 +78,13 @@ export interface MeetingStoreActions {
 
 export type MeetingStore = MeetingStoreState & MeetingStoreActions
 
+type PersistedMeetingStoreState = Pick<
+  MeetingStoreState,
+  'meeting' | 'microphoneEnabled' | 'cameraEnabled'
+>
+
+const MEETING_SESSION_STORAGE_KEY = 'vienmeet-meeting-session'
+
 const calculateDurationSeconds = (
   startedAt: string | null,
   endedAt: string,
@@ -151,7 +159,7 @@ const syncRealtimeParticipant = (
   return changed ? { ...meeting, participants } : meeting
 }
 
-export const useMeetingStore = create<MeetingStore>()((set) => ({
+const createMeetingStore: StateCreator<MeetingStore> = (set) => ({
   ...createInitialStoreState(),
 
   setMeetingId: (meetingId) => {
@@ -636,4 +644,18 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
       }
     })
   },
-}))
+})
+
+export const useMeetingStore = create<MeetingStore>()(
+  persist(createMeetingStore, {
+    name: MEETING_SESSION_STORAGE_KEY,
+    storage: createJSONStorage<PersistedMeetingStoreState>(
+      () => window.sessionStorage,
+    ),
+    partialize: ({ meeting, microphoneEnabled, cameraEnabled }) => ({
+      meeting,
+      microphoneEnabled,
+      cameraEnabled,
+    }),
+  }),
+)

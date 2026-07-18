@@ -5,6 +5,7 @@ import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useTranslation } from '@/hooks/useTranslation'
 import { useClipboard } from '@/hooks/useClipboard'
+import { ROUTES } from '@/lib/constants'
 import { formatElapsedTime } from '@/lib/formatters'
 
 export interface MeetingHeaderProps {
@@ -21,6 +22,15 @@ export function MeetingHeader({
   const { t } = useTranslation()
   const { copy, copyState } = useClipboard()
   const elapsedTime = formatElapsedTime(elapsedSeconds)
+  const inviteUrl = new URL(
+    ROUTES.joinSetup(roomId),
+    window.location.origin,
+  ).toString()
+  const inviteCopyLabel = t(
+    copyState === 'copied'
+      ? 'meeting.inviteCopied'
+      : 'meeting.copyInviteLink',
+  )
 
   return (
     <header className="relative z-20 border-b border-line bg-panel">
@@ -38,16 +48,17 @@ export function MeetingHeader({
 
         <button
           type="button"
-          onClick={() => void copy(roomId)}
+          onClick={() => void copy(inviteUrl)}
           className="hidden min-w-0 items-center gap-2 rounded-[10px] border border-line-strong bg-panel-muted px-3 py-2 text-left transition-colors hover:border-primary sm:flex"
-          aria-label={t('meeting.copyRoomCode', { code: roomId })}
+          aria-label={inviteCopyLabel}
+          title={inviteUrl}
         >
           <span className="min-w-0">
             <span className="block text-[0.5625rem] font-bold uppercase tracking-[0.12em] text-muted">
-              {t('meeting.roomCode')}
+              {t('meeting.inviteLink')}
             </span>
             <span className="block max-w-44 truncate font-mono text-xs font-semibold text-ink-soft">
-              {roomId}
+              {inviteUrl}
             </span>
           </span>
           {copyState === 'copied' ? (
@@ -58,9 +69,10 @@ export function MeetingHeader({
         </button>
         <button
           type="button"
-          onClick={() => void copy(roomId)}
+          onClick={() => void copy(inviteUrl)}
           className="grid size-10 shrink-0 place-items-center rounded-[10px] border border-line-strong text-muted transition-colors hover:border-primary hover:text-primary sm:hidden"
-          aria-label={t('meeting.copyRoomCode', { code: roomId })}
+          aria-label={inviteCopyLabel}
+          title={inviteUrl}
         >
           {copyState === 'copied' ? (
             <Check className="size-4 text-success" aria-hidden="true" />
