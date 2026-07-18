@@ -44,6 +44,45 @@ FINAL_BYTES = int(SAMPLE_RATE * BYTES_PER_SAMPLE * 1.2)
 LOGGER = logging.getLogger("vienmeet.ai")
 
 
+# --- FIX: shared/global model instances -------------------------------------
+# Truoc day moi PipelineSession (moi client connect) tu tao AudioPipeline(),
+# ASREngine(), FastPathTranslator() rieng, khien VAD (Silero), Whisper, va
+# NLLB bi load lai tu dau cho MOI session/connect. Gio dung 1 instance dung
+# chung cho toan server, load 1 lan duy nhat luc khoi dong.
+#
+# QualityPathTranslator KHONG can dung chung: no chi tao 1 OpenAI client tro
+# toi API ngoai (FPT AI Factory), khong load model cuc bo nao, nen khoi tao
+# rat nhe va giu nguyen per-session la on.
+_SHARED_AUDIO_PIPELINE: AudioPipeline | None = None
+_SHARED_ASR_ENGINE: ASREngine | None = None
+_SHARED_FAST_TRANSLATOR: FastPathTranslator | None = None
+
+
+def get_shared_audio_pipeline() -> AudioPipeline:
+    global _SHARED_AUDIO_PIPELINE
+    if _SHARED_AUDIO_PIPELINE is None:
+        _SHARED_AUDIO_PIPELINE = AudioPipeline()
+        _SHARED_AUDIO_PIPELINE.preflight()  # load VAD ngay, chi 1 lan
+    return _SHARED_AUDIO_PIPELINE
+
+
+def get_shared_asr_engine() -> ASREngine:
+    global _SHARED_ASR_ENGINE
+    if _SHARED_ASR_ENGINE is None:
+        _SHARED_ASR_ENGINE = ASREngine()
+        _SHARED_ASR_ENGINE._ensure_model()  # ep load Whisper ngay, chi 1 lan
+    return _SHARED_ASR_ENGINE
+
+
+def get_shared_fast_translator() -> FastPathTranslator:
+    global _SHARED_FAST_TRANSLATOR
+    if _SHARED_FAST_TRANSLATOR is None:
+        _SHARED_FAST_TRANSLATOR = FastPathTranslator()
+        _SHARED_FAST_TRANSLATOR._ensure_model()  # ep load NLLB ngay, chi 1 lan
+    return _SHARED_FAST_TRANSLATOR
+# -----------------------------------------------------------------------------
+
+
 class WebSocketClosed(Exception):
     pass
 
@@ -165,10 +204,13 @@ class PipelineSession:
         self.utterance_count = 0
         self.started_at = time.time()
 
-        self.audio = AudioPipeline()
-        self.asr = ASREngine()
+        # FIX: dung cac model dung chung (da load san tu luc server khoi
+        # dong) thay vi tao moi cho tung session. QualityPathTranslator van
+        # tao per-session vi no chi la 1 client HTTP nhe toi API ngoai.
+        self.audio = get_shared_audio_pipeline()
+        self.asr = get_shared_asr_engine()
         self.revision = RevisionHandler()
-        self.fast = FastPathTranslator()
+        self.fast = get_shared_fast_translator()
         self.quality = QualityPathTranslator()
         self.monitor = HealthMonitor()
         self.session = SessionManager()
@@ -814,6 +856,16 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 async def run_server(host: str | None = None, port: int | None = None) -> None:
     host = host or os.getenv("AI_WS_HOST", "127.0.0.1")
     port = port or int(os.getenv("AI_WS_PORT", "8765"))
+
+    # FIX: "warm up" tat ca model nang (VAD, Whisper ASR, NLLB fast-translate)
+    # NGAY luc server khoi dong, TRUOC khi mo cong nhan client. Nho vay client
+    # dau tien connect vao khong con phai doi load model nua.
+    print("Warming up shared models (VAD, Whisper ASR, NLLB fast-translate)...")
+    await asyncio.to_thread(get_shared_audio_pipeline)
+    await asyncio.to_thread(get_shared_asr_engine)
+    await asyncio.to_thread(get_shared_fast_translator)
+    print("All shared models ready.")
+
     server = await asyncio.start_server(handle_client, host, port)
     sockets = ", ".join(str(socket.getsockname()) for socket in server.sockets or [])
     print(f"AI worker listening on ws://{host}:{port}/ws/session ({sockets})")
