@@ -1,18 +1,18 @@
 import { Mic, Volume2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
-import { microphoneOptions } from '@/data/mockMeeting'
 import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useTranslation } from '@/hooks/useTranslation'
 import type { TranslationKey } from '@/i18n/translations'
-import { MOCK_AUDIO_LEVEL_SEQUENCE } from '@/lib/constants'
+import { AudioStreamer } from '@/lib/audioStreamer'
 import { cn } from '@/lib/utils'
 import { useMeetingStore } from '@/store/meetingStore'
-import type { MicrophoneTestStatus, NoiseLevel } from '@/types/meeting'
+import type { MicrophoneTestStatus } from '@/types/meeting'
 
 const METER_SEGMENT_COUNT = 12
-const TEST_STEP_DURATION_MS = 220
+const TEST_DURATION_MS = 5_000
+const MINIMUM_DETECTED_LEVEL = 0.02
 
 const microphoneStatusKeys: Record<
   MicrophoneTestStatus,
@@ -21,71 +21,97 @@ const microphoneStatusKeys: Record<
   idle: 'microphone.statusIdle',
   testing: 'microphone.statusTesting',
   complete: 'microphone.statusComplete',
-}
-
-const microphoneLabelKeys: Partial<Record<string, TranslationKey>> = {
-  'built-in-microphone': 'microphone.builtIn',
-  'conference-speakerphone': 'microphone.conference',
-  'studio-usb-microphone': 'microphone.studio',
-}
-
-const noiseLevelKeys: Record<NoiseLevel, TranslationKey> = {
-  low: 'common.low',
-  medium: 'common.medium',
-  high: 'common.high',
+  'no-input': 'microphone.statusNoInput',
+  error: 'microphone.statusError',
 }
 
 export function MicrophoneTest() {
   const { t } = useTranslation()
-  const microphoneId = useMeetingStore(
-    (state) => state.meeting.microphoneId,
+  const audioInputLevel = useMeetingStore(
+    (state) => state.audioInputLevel,
   )
-  const audioInputLevel = useMeetingStore((state) => state.audioInputLevel)
-  const noiseLevel = useMeetingStore((state) => state.noiseLevel)
   const microphoneTestStatus = useMeetingStore(
     (state) => state.microphoneTestStatus,
   )
-  const setMicrophone = useMeetingStore((state) => state.setMicrophone)
   const setAudioInputLevel = useMeetingStore(
     (state) => state.setAudioInputLevel,
   )
   const setMicrophoneTestStatus = useMeetingStore(
     (state) => state.setMicrophoneTestStatus,
   )
-  const intervalRef = useRef<number | null>(null)
+  const streamerRef = useRef<AudioStreamer | null>(null)
+  const timeoutRef = useRef<number | null>(null)
+  const runIdRef = useRef(0)
+  const peakLevelRef = useRef(0)
 
-  const clearTestInterval = () => {
-    if (intervalRef.current !== null) {
-      window.clearInterval(intervalRef.current)
-      intervalRef.current = null
+  const stopTest = () => {
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current)
     }
+    timeoutRef.current = null
+    streamerRef.current?.stop()
+    streamerRef.current = null
   }
 
   useEffect(
     () => () => {
-      clearTestInterval()
+      runIdRef.current += 1
+      stopTest()
     },
     [],
   )
 
-  const runMicrophoneTest = () => {
-    clearTestInterval()
-
-    let sequenceIndex = 0
+  const runMicrophoneTest = async () => {
+    stopTest()
+    const runId = runIdRef.current + 1
+    runIdRef.current = runId
+    peakLevelRef.current = 0
+    setAudioInputLevel(0)
     setMicrophoneTestStatus('testing')
-    setAudioInputLevel(MOCK_AUDIO_LEVEL_SEQUENCE[sequenceIndex] ?? 0)
 
-    intervalRef.current = window.setInterval(() => {
-      sequenceIndex += 1
+    const streamer = new AudioStreamer({
+      sampleRate: 16_000,
+      onAudioChunk: () => undefined,
+      onVolume: (volume) => {
+        if (runIdRef.current !== runId) {
+          return
+        }
+        const normalizedLevel = volume / 100
+        peakLevelRef.current = Math.max(
+          peakLevelRef.current,
+          normalizedLevel,
+        )
+        setAudioInputLevel(normalizedLevel)
+      },
+    })
 
-      if (sequenceIndex >= MOCK_AUDIO_LEVEL_SEQUENCE.length) {
-        clearTestInterval()
-        setMicrophoneTestStatus('complete')
+    try {
+      await streamer.start()
+      if (runIdRef.current !== runId) {
+        streamer.stop()
         return
       }
 
-      setAudioInputLevel(MOCK_AUDIO_LEVEL_SEQUENCE[sequenceIndex] ?? 0)
-    }, TEST_STEP_DURATION_MS)
+      streamerRef.current = streamer
+      timeoutRef.current = window.setTimeout(() => {
+        if (runIdRef.current !== runId) {
+          return
+        }
+
+        stopTest()
+        setMicrophoneTestStatus(
+          peakLevelRef.current >= MINIMUM_DETECTED_LEVEL
+            ? 'complete'
+            : 'no-input',
+        )
+      }, TEST_DURATION_MS)
+    } catch {
+      streamer.stop()
+      if (runIdRef.current === runId) {
+        setAudioInputLevel(0)
+        setMicrophoneTestStatus('error')
+      }
+    }
   }
 
   const activeSegments = Math.ceil(
@@ -109,66 +135,35 @@ export function MicrophoneTest() {
             {t('microphone.description')}
           </p>
         </div>
-        <StatusBadge tone="neutral">
-          {t('common.simulated')}
+        <StatusBadge tone="info">
+          {t('microphone.audioInput')}
         </StatusBadge>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-        <div>
-          <label
-            htmlFor="microphone-select"
-            className="mb-2 block text-sm font-medium text-ink-soft"
-          >
-            {t('microphone.audioInput')}
-          </label>
-          <div className="relative">
-            <Mic
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
-            />
-            <select
-              id="microphone-select"
-              value={microphoneId}
-              onChange={(event) => setMicrophone(event.target.value)}
-              className="h-12 w-full appearance-none rounded-[10px] border border-line-strong bg-panel pl-10 pr-10 text-base text-ink transition-colors hover:border-muted focus:border-primary"
-            >
-              {microphoneOptions.map((option) => {
-                const labelKey = microphoneLabelKeys[option.id]
-
-                return (
-                  <option key={option.id} value={option.id}>
-                    {labelKey ? t(labelKey) : option.label}
-                  </option>
-                )
-              })}
-            </select>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs text-muted"
-            >
-              ▾
-            </span>
-          </div>
-        </div>
-
-        <Button
-          type="button"
-          onClick={runMicrophoneTest}
-          disabled={microphoneTestStatus === 'testing'}
-          aria-describedby="microphone-test-note"
-          variant="secondary"
-          size="lg"
-          leadingIcon={<Volume2 aria-hidden="true" className="size-4" />}
-          className="min-w-40 disabled:cursor-wait"
-        >
-          {microphoneTestStatus === 'testing'
-            ? t('microphone.testing')
-            : t('microphone.test')}
-        </Button>
-      </div>
-
-      <p id="microphone-test-note" className="mt-2 text-xs text-muted">
+      <Button
+        type="button"
+        onClick={() => void runMicrophoneTest()}
+        disabled={microphoneTestStatus === 'testing'}
+        aria-describedby="microphone-test-note"
+        variant="secondary"
+        size="lg"
+        leadingIcon={
+          microphoneTestStatus === 'testing' ? (
+            <Volume2 aria-hidden="true" className="size-4" />
+          ) : (
+            <Mic aria-hidden="true" className="size-4" />
+          )
+        }
+        className="min-w-40 disabled:cursor-wait"
+      >
+        {microphoneTestStatus === 'testing'
+          ? t('microphone.testing')
+          : t('microphone.test')}
+      </Button>
+      <p
+        id="microphone-test-note"
+        className="mt-2 text-xs text-muted"
+      >
         {t('microphone.testNote')}
       </p>
 
@@ -179,12 +174,16 @@ export function MicrophoneTest() {
           </span>
           <span
             aria-live="polite"
-            className="text-xs font-medium text-muted-strong"
+            className={cn(
+              'text-right text-xs font-medium text-muted-strong',
+              microphoneTestStatus === 'error' && 'text-danger',
+              microphoneTestStatus === 'no-input' &&
+                'text-warning',
+            )}
           >
             {t(microphoneStatusKeys[microphoneTestStatus])}
           </span>
         </div>
-
         <div
           role="meter"
           aria-label={t('microphone.levelAria')}
@@ -193,41 +192,26 @@ export function MicrophoneTest() {
           aria-valuenow={Math.round(audioInputLevel * 100)}
           className="mt-4 grid h-8 grid-cols-12 items-end gap-1"
         >
-          {Array.from({ length: METER_SEGMENT_COUNT }, (_, index) => (
-            <span
-              key={index}
-              aria-hidden="true"
-              className={cn(
-                'block rounded-[2px] transition-colors duration-150',
-                index < activeSegments
-                  ? index > 8
-                    ? 'bg-warning'
-                    : 'bg-primary'
-                  : 'bg-line',
-              )}
-              style={{
-                height: `${36 + ((index * 17) % 58)}%`,
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="mt-4 flex items-center justify-between gap-4 border-t border-line pt-3">
-          <span className="text-xs text-muted">
-            {t('microphone.roomNoise')}
-          </span>
-          <StatusBadge
-            tone="success"
-            icon={
+          {Array.from(
+            { length: METER_SEGMENT_COUNT },
+            (_, index) => (
               <span
+                key={index}
                 aria-hidden="true"
-                className="size-1.5 rounded-full bg-success"
+                className={cn(
+                  'block rounded-[2px] transition-colors duration-150',
+                  index < activeSegments
+                    ? index > 8
+                      ? 'bg-warning'
+                      : 'bg-primary'
+                    : 'bg-line',
+                )}
+                style={{
+                  height: `${36 + ((index * 17) % 58)}%`,
+                }}
               />
-            }
-            className="capitalize"
-          >
-            {t(noiseLevelKeys[noiseLevel])}
-          </StatusBadge>
+            ),
+          )}
         </div>
       </div>
     </section>

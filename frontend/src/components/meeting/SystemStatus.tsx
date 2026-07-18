@@ -1,14 +1,12 @@
 import { FlaskConical, Gauge, Hash, Radio, Volume2 } from 'lucide-react'
 
-import { mockSystemStatus } from '@/data/mockMeeting'
 import { useTranslation } from '@/hooks/useTranslation'
 import type { TranslationKey } from '@/i18n/translations'
-import { formatLatency } from '@/lib/formatters'
 import { useMeetingStore } from '@/store/meetingStore'
 import type { RealtimeSessionStatus } from '@/types/realtime'
 
 const connectionValueKeys = {
-  mock: 'system.offlineDemo',
+  connecting: 'system.connecting',
   'gateway-connected': 'system.gatewayConnected',
   ended: 'system.sessionEnded',
   error: 'system.connectionIssue',
@@ -32,33 +30,18 @@ export function SystemStatus() {
       icon: Radio,
     },
     {
-      labelKey:
-        realtimeStatus === 'mock'
-          ? 'system.mockLatency'
-          : 'system.latency',
-      ...(realtimeStatus === 'mock'
-        ? {
-            value: formatLatency(
-              mockSystemStatus.translationLatencyMs,
-            ),
-          }
-        : { valueKey: 'system.awaitingMetrics' }),
+      labelKey: 'system.latency',
+      valueKey: 'system.awaitingMetrics',
       icon: Gauge,
     },
     {
       labelKey: 'system.noise',
-      valueKey:
-        realtimeStatus === 'mock'
-          ? 'common.low'
-          : 'system.awaitingMetrics',
+      valueKey: 'system.awaitingMetrics',
       icon: Volume2,
     },
     {
       labelKey: 'system.mode',
-      valueKey:
-        realtimeStatus === 'mock'
-          ? 'system.cloudPrototype'
-          : 'system.realtimeGateway',
+      valueKey: 'system.realtimeGateway',
       icon: FlaskConical,
     },
   ] as const satisfies readonly {

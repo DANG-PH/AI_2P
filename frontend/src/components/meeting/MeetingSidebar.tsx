@@ -1,4 +1,9 @@
-import { useId, useState, type FormEvent } from 'react'
+import {
+  useId,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
 import {
   BookOpen,
   FileText,
@@ -53,6 +58,37 @@ export function MeetingSidebar({
   const addNote = useMeetingStore((state) => state.addNote)
   const removeNote = useMeetingStore((state) => state.removeNote)
   const tabListId = useId()
+  const connectedParticipants = participants.filter(
+    (participant) => participant.name.trim().length > 0,
+  )
+
+  const handleTabKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    tabIndex: number,
+  ) => {
+    let nextIndex: number | null = null
+
+    if (event.key === 'ArrowRight') {
+      nextIndex = (tabIndex + 1) % tabs.length
+    } else if (event.key === 'ArrowLeft') {
+      nextIndex = (tabIndex - 1 + tabs.length) % tabs.length
+    } else if (event.key === 'Home') {
+      nextIndex = 0
+    } else if (event.key === 'End') {
+      nextIndex = tabs.length - 1
+    }
+
+    if (nextIndex === null) return
+
+    event.preventDefault()
+    const nextTab = tabs[nextIndex]
+    setActiveTab(nextTab.id)
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`${tabListId}-${nextTab.id}-tab`)
+        ?.focus()
+    })
+  }
 
   const handleGlossarySubmit = (event: FormEvent) => {
     event.preventDefault()
@@ -89,7 +125,7 @@ export function MeetingSidebar({
         aria-label={t('sidebar.sections')}
         className="grid grid-cols-3 border-b border-line"
       >
-        {tabs.map((tab) => {
+        {tabs.map((tab, tabIndex) => {
           const Icon = tab.icon
           const selected = activeTab === tab.id
           return (
@@ -100,7 +136,11 @@ export function MeetingSidebar({
               aria-selected={selected}
               aria-controls={`${tabListId}-${tab.id}`}
               id={`${tabListId}-${tab.id}-tab`}
+              tabIndex={selected ? 0 : -1}
               onClick={() => setActiveTab(tab.id)}
+              onKeyDown={(event) =>
+                handleTabKeyDown(event, tabIndex)
+              }
               className={cn(
                 'relative flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-[0.6875rem] font-semibold transition-colors',
                 selected
@@ -134,10 +174,12 @@ export function MeetingSidebar({
                 {t('sidebar.inMeeting')}
               </h2>
               <span className="text-xs text-muted">
-                {t('common.people', { count: participants.length })}
+                {t('common.people', {
+                  count: connectedParticipants.length,
+                })}
               </span>
             </div>
-            {participants.map((participant) => (
+            {connectedParticipants.map((participant) => (
               <div
                 key={participant.id}
                 className="flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-3"

@@ -14,9 +14,12 @@ export type TranslationStatus =
 
 export type MeetingStatus = 'setup' | 'live' | 'ended'
 
-export type DemoStatus = 'idle' | 'running' | 'complete'
-
-export type MicrophoneTestStatus = 'idle' | 'testing' | 'complete'
+export type MicrophoneTestStatus =
+  | 'idle'
+  | 'testing'
+  | 'complete'
+  | 'no-input'
+  | 'error'
 
 export type NoiseLevel = 'low' | 'medium' | 'high'
 
@@ -57,22 +60,11 @@ export interface ConversationTurn {
   isEdited?: boolean
 }
 
-export interface DemoTurnScript {
-  id: string
-  speakerId: string
-  speakerName: string
-  sourceLanguage: Language
-  targetLanguage: Language
-  timestampSeconds: number
-  originalText: string
-  draftTranslation: string
-  finalTranslation: string
-}
-
 export interface Meeting {
   id: string
   title: string
   participants: Participant[]
+  localLanguage: Language
   conversationMode: ConversationMode
   microphoneId: string
   languageOrder: LanguageOrder
@@ -95,13 +87,6 @@ export interface ActionItem {
 export interface MicrophoneOption {
   id: string
   label: string
-}
-
-export interface SystemStatus {
-  connection: 'offline-demo' | 'excellent' | 'good' | 'unstable'
-  translationLatencyMs: number
-  noiseLevel: NoiseLevel
-  translationMode: 'deterministic-mock'
 }
 
 export type GlossaryTermInput = Omit<GlossaryTerm, 'id'>

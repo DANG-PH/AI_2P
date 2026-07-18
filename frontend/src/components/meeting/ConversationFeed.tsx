@@ -4,8 +4,6 @@ import {
   AudioLines,
   FilePlus2,
   Languages,
-  Play,
-  RotateCcw,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
@@ -13,36 +11,34 @@ import { useTranslation } from '@/hooks/useTranslation'
 import type {
   ConversationMode,
   ConversationTurn,
-  DemoStatus,
   Language,
   LanguageOrder,
 } from '@/types/meeting'
+import type { RealtimeSessionStatus } from '@/types/realtime'
 import { ConversationTurnCard } from './ConversationTurnCard'
 
 export interface ConversationFeedProps {
   turns: ConversationTurn[]
-  onRunDemo: () => void
   conversationMode: ConversationMode
   languageOrder: LanguageOrder
-  demoStatus: DemoStatus
+  localLanguage: Language
   activePushLanguage: Language | null
   onToggleMode: () => void
   onSwapLanguages: () => void
   onAddNote: () => void
-  onRunOrResetDemo: () => void
+  realtimeStatus?: RealtimeSessionStatus
 }
 
 export function ConversationFeed({
   turns,
-  onRunDemo,
   conversationMode,
   languageOrder,
-  demoStatus,
+  localLanguage,
   activePushLanguage,
   onToggleMode,
   onSwapLanguages,
   onAddNote,
-  onRunOrResetDemo,
+  realtimeStatus,
 }: ConversationFeedProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -103,8 +99,13 @@ export function ConversationFeed({
           </span>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <Button variant="ghost" size="sm" onClick={onToggleMode}>
+        <div className="mt-3 grid grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleMode}
+            className="w-full gap-1 whitespace-nowrap px-0 text-[0.625rem] sm:w-auto sm:gap-1.5 sm:px-3 sm:text-xs"
+          >
             {conversationMode === 'auto'
               ? t('feed.autoMode')
               : t('feed.pushToTalk')}
@@ -114,6 +115,7 @@ export function ConversationFeed({
             size="sm"
             leadingIcon={<Languages className="size-3.5" aria-hidden="true" />}
             onClick={onSwapLanguages}
+            className="w-full gap-1 whitespace-nowrap px-0 text-[0.625rem] sm:w-auto sm:gap-1.5 sm:px-3 sm:text-xs"
           >
             {languageOrder[0].toUpperCase()} → {languageOrder[1].toUpperCase()}
           </Button>
@@ -122,29 +124,17 @@ export function ConversationFeed({
             size="sm"
             leadingIcon={<FilePlus2 className="size-3.5" aria-hidden="true" />}
             onClick={onAddNote}
+            className="w-full gap-1 whitespace-nowrap px-0 text-[0.625rem] sm:w-auto sm:gap-1.5 sm:px-3 sm:text-xs"
           >
             {t('meeting.note')}
-          </Button>
-          <Button
-            variant={demoStatus === 'idle' ? 'primary' : 'secondary'}
-            size="sm"
-            leadingIcon={
-              demoStatus === 'idle' ? (
-                <Play className="size-3.5" aria-hidden="true" />
-              ) : (
-                <RotateCcw className="size-3.5" aria-hidden="true" />
-              )
-            }
-            onClick={onRunOrResetDemo}
-            id="run-demo-control"
-          >
-            {demoStatus === 'idle' ? t('feed.runDemo') : t('feed.reset')}
           </Button>
         </div>
 
         {conversationMode === 'push-to-talk' && (
           <p className="mt-2 text-[0.6875rem] leading-4 text-muted">
-            {t('feed.pushHint')}
+            {t('feed.pushHint', {
+              language: languageLabel(localLanguage),
+            })}
             {activePushLanguage && (
               <strong className="ml-2 font-semibold text-primary">
                 {t('feed.languageActive', {
@@ -168,24 +158,25 @@ export function ConversationFeed({
       >
         <div className="w-full">
           {turns.length === 0 ? (
-            <div className="grid min-h-[16rem] place-items-center px-6 py-10 text-center">
+            <div className="grid min-h-[16rem] place-items-center px-6 pb-28 pt-6 text-center sm:py-10">
               <div className="max-w-sm">
                 <div className="mx-auto mb-4 grid size-10 place-items-center rounded-[10px] bg-[#f0fdfa] text-vietnamese">
                   <AudioLines className="size-5" aria-hidden="true" />
                 </div>
                 <h3 className="text-sm font-semibold text-ink">
-                  {t('feed.readyTitle')}
+                  {realtimeStatus === 'gateway-connected'
+                    ? t('turn.waiting')
+                    : t('feed.readyTitle')}
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  {t('feed.readyDescription')}
+                  {realtimeStatus === 'gateway-connected'
+                    ? conversationMode === 'push-to-talk'
+                      ? t('feed.pushHint', {
+                          language: languageLabel(localLanguage),
+                        })
+                      : t('feed.autoHint')
+                    : t('feed.readyDescription')}
                 </p>
-                <Button
-                  variant="primary"
-                  className="mt-5"
-                  onClick={onRunDemo}
-                >
-                  {t('feed.runScriptedDemo')}
-                </Button>
               </div>
             </div>
           ) : (

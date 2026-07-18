@@ -6,11 +6,22 @@ export interface SessionReadyEvent {
   sessionId: string
 }
 
+export interface SessionParticipantsEvent {
+  type: 'session.participants'
+  participants: Array<{
+    clientId: string
+    displayName: string
+    language?: Language
+  }>
+}
+
 export interface SttPartialEvent {
   type: 'stt.partial'
   text: string
   speaker: Language
   utteranceId: string
+  clientId?: string | null
+  displayName?: string | null
 }
 
 export interface SttFinalEvent {
@@ -18,12 +29,16 @@ export interface SttFinalEvent {
   text: string
   speaker: Language
   utteranceId: string
+  clientId?: string | null
+  displayName?: string | null
 }
 
 export interface TranslateTokenEvent {
   type: 'translate.token'
   token: string
   utteranceId: string
+  clientId?: string | null
+  displayName?: string | null
 }
 
 export interface TranslateDoneEvent {
@@ -32,6 +47,8 @@ export interface TranslateDoneEvent {
   sourceText: string
   speaker: Language
   utteranceId: string
+  clientId?: string | null
+  displayName?: string | null
 }
 
 export interface SessionEndedEvent {
@@ -52,12 +69,13 @@ export type RealtimeTranscriptEvent =
 
 export type RealtimeServerEvent =
   | SessionReadyEvent
+  | SessionParticipantsEvent
   | RealtimeTranscriptEvent
   | SessionEndedEvent
   | RealtimeErrorEvent
 
 export type RealtimeSessionStatus =
-  | 'mock'
+  | 'connecting'
   | 'gateway-connected'
   | 'ended'
   | 'error'
@@ -82,6 +100,8 @@ export interface SpeakerSwitchCommand {
 export interface LiveKitTokenRequest {
   roomName: string
   participantName: string
+  displayName: string
+  language: Language
 }
 
 export interface LiveKitTokenResponse {

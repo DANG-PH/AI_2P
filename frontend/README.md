@@ -4,12 +4,8 @@
 
 ViEnMeet is a translation-first meeting product for near real-time
 Vietnamese–English business conversations between two participants on separate
-devices. This repository currently implements a clickable vertical slice:
-meeting setup, terminology management, a deterministic bilingual conversation,
-and an exportable meeting summary.
-
-This repository intentionally contains no speech recognition, translation API,
-authentication, database, or backend service.
+devices. The frontend connects to the deployed NestJS realtime gateway and
+LiveKit server described in [`../Architecture.md`](../Architecture.md).
 
 ## Product specification
 
@@ -61,8 +57,8 @@ pnpm preview  # Preview the production build
 | --- | --- |
 | `/` | Concise product landing page and conversation preview |
 | `/create` | Create a local room and continue to setup |
-| `/room/:roomId/setup` | Meeting details, mock microphone test, and glossary CRUD |
-| `/room/:roomId` | Live bilingual meeting console and scripted demo |
+| `/room/:roomId/setup` | Meeting details, live microphone test, and glossary CRUD |
+| `/room/:roomId` | LiveKit video and realtime bilingual transcript console |
 | `/room/:roomId/summary` | Summary, actions, decisions, transcript, and browser export |
 
 The old `/setup`, `/meeting`, and `/summary` paths redirect to a generated
@@ -74,39 +70,25 @@ room-scoped URL for compatibility.
 - Switch the entire interface between Vietnamese and English with the choice
   saved in the browser
 - Switch automatic and push-to-talk conversation modes
-- Select and test a mock microphone with deterministic levels
+- Test the browser microphone with live input levels
 - Add, edit, and remove glossary terms
 - Start and end a meeting
-- Run or safely reset the deterministic four-turn conversation
-- Progress through backend-shaped `stt.partial`, `stt.final`,
+- Receive `stt.partial`, `stt.final`,
   `translate.token`, and `translate.done` events
 - Toggle the microphone and swap the visible language order
-- Use Space and Enter as simulated push-to-talk controls outside form fields
+- Use Space and Enter as push-to-talk controls outside form fields
 - Copy and correct translations
 - Add and remove meeting notes
 - Copy the summary
 - Download a UTF-8 `.txt` transcript entirely in the browser
 - Start another meeting while retaining the setup and glossary
 
-## Prototype boundaries
+## Realtime integration
 
-The live experience is clearly labeled as scripted. Audio levels, connection
-quality, latency, noise level, and translation states are mock values. The
-translation mode is shown as **Deterministic mock**; the UI does not claim that
-a cloud, local, or on-premise processing pipeline is active.
-
-The room ID in the URL is the canonical future Socket.IO `sessionId` and
-LiveKit `roomName`. A stable browser `clientId` is persisted locally for the
-future LiveKit participant identity. The deterministic demo passes normalized
-backend events through the same typed store reducer intended for a later
-Socket.IO adapter.
-
-The production connection remains intentionally disabled. Before enabling it,
-the backend must distinguish simultaneous participant audio streams, attach a
-participant identity to transcript events, and only report AI readiness after
-the AI WebSocket is open. Current server events also omit sequence and timing
-metadata, so the frontend derives those values locally until the contract is
-extended.
+The URL room ID is used as both Socket.IO `sessionId` and LiveKit `roomName`.
+A stable browser `clientId` is persisted in local storage and is also used as
+the LiveKit participant identity. Microphone PCM is sent only after the gateway
+emits `session.ready`; transcript events are reduced by `utteranceId`.
 
 ## Project structure
 
@@ -119,8 +101,8 @@ src/
 │   ├── meeting/          # Feed, controls, sidebar, and status components
 │   ├── setup/            # Setup form, microphone test, and glossary editor
 │   └── ui/               # Shared accessible primitives
-├── data/                 # Realistic mock meeting data
-├── hooks/                # Clock, clipboard, PTT, and demo orchestration
+├── data/                 # Initial empty meeting state
+├── hooks/                # Realtime, clock, clipboard, and PTT orchestration
 ├── i18n/                 # Typed English and Vietnamese dictionaries
 ├── lib/                  # Identity, realtime reducers, formatting, and utilities
 ├── pages/                # Four route-level page components

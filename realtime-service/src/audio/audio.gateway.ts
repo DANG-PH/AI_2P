@@ -1,18 +1,60 @@
+import { Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { OnEvent } from '@nestjs/event-emitter';
-import { Logger } from '@nestjs/common';
-import { SessionStore } from './session.store';
-import { AiBridgeService } from './ai-bridge.service';
 import type { AiEventPayload } from '../common/types/events.type';
+import { AiBridgeService } from './ai-bridge.service';
+import { ParticipantLanguage, SessionStore } from './session.store';
+
+type SpeakerSwitchPayload = {
+  speaker: ParticipantLanguage;
+};
+
+type AudioSocketData = {
+  sessionId?: string;
+  clientId?: string;
+};
+
+function getSocketData(client: Socket): AudioSocketData {
+  return client.data as AudioSocketData;
+}
+
+function getQueryString(
+  value: string | string[] | undefined,
+  maxLength: number,
+): string | undefined {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (typeof candidate !== 'string') return undefined;
+
+  const normalized = candidate.trim();
+  if (!normalized || normalized.length > maxLength) return undefined;
+  return normalized;
+}
+
+function getParticipantLanguage(
+  value: string | string[] | undefined,
+): ParticipantLanguage | undefined {
+  const language = getQueryString(value, 2);
+  return language === 'vi' || language === 'en' ? language : undefined;
+}
+
+function getAudioChunk(value: unknown): ArrayBuffer | Buffer | undefined {
+  if (Buffer.isBuffer(value) || value instanceof ArrayBuffer) return value;
+
+  if (ArrayBuffer.isView(value)) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  }
+
+  return undefined;
+}
 
 @WebSocketGateway({
   namespace: '/audio',
@@ -33,118 +75,225 @@ export class AudioGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly aiBridge: AiBridgeService,
   ) {}
 
-  async handleConnection(client: Socket) {
+  async handleConnection(client: Socket): Promise<void> {
+    const sessionId = getQueryString(client.handshake.query?.sessionId, 128);
+    const clientId = getQueryString(client.handshake.query?.clientId, 128);
+
+    if (!sessionId || !clientId) {
+      this.logger.warn('Connection rejected: missing sessionId or clientId');
+      client.emit('error', {
+        code: 'INVALID_CONNECTION',
+        message: 'A valid sessionId and clientId are required.',
+      });
+      client.disconnect(true);
+      return;
+    }
+
+    const socketData = getSocketData(client);
+    socketData.sessionId = sessionId;
+    socketData.clientId = clientId;
+
+    if (this.sessionStore.get(sessionId)?.endedAt) {
+      client.emit('session.ended', { sessionId });
+      client.disconnect(true);
+      return;
+    }
+
+    const domain =
+      getQueryString(client.handshake.query?.domain, 64) ?? 'business';
+    const languagePair =
+      getQueryString(client.handshake.query?.languagePair, 16) ?? 'vi-en';
+    const title = getQueryString(client.handshake.query?.title, 160) ?? '';
+    const displayName =
+      getQueryString(client.handshake.query?.displayName, 80) ?? clientId;
+    const language =
+      getParticipantLanguage(client.handshake.query?.localLanguage) ??
+      getParticipantLanguage(client.handshake.query?.language);
+
     try {
-      const sessionId = client.handshake.query?.sessionId as string;
-      const clientId = client.handshake.query?.clientId as string;
+      this.sessionStore.getOrCreate(sessionId, domain, languagePair, title);
+      const previousSocket = this.sessionStore.addClient(
+        sessionId,
+        clientId,
+        client,
+        { displayName, language },
+      );
 
-      if (!sessionId || !clientId) {
-        this.logger.warn('Connect thiếu sessionId hoặc clientId, disconnect');
+      await client.join(sessionId);
+
+      if (previousSocket && previousSocket.id !== client.id) {
+        previousSocket.disconnect(true);
+      }
+
+      await this.aiBridge.openSession(sessionId, clientId, {
+        domain,
+        languagePair,
+      });
+
+      if (
+        !this.sessionStore.isLive(sessionId) ||
+        !this.sessionStore.isCurrentClient(sessionId, clientId, client.id)
+      ) {
         client.disconnect(true);
         return;
       }
 
-      const domain = (client.handshake.query?.domain as string) ?? 'business';
-      const languagePair = (client.handshake.query?.languagePair as string) ?? 'vi-en';
-
-      client.data.sessionId = sessionId;
-      client.data.clientId = clientId;
-
-      this.sessionStore.getOrCreate(sessionId, domain, languagePair);
-      this.sessionStore.addClient(sessionId, clientId, client);
-      client.join(sessionId);
-
-      // ⚠️ AWAIT ở đây — đợi WS sang FastAPI OPEN xong
-      try {
-        await this.aiBridge.openSession(sessionId, { domain, languagePair });
-      } catch (err: any) {
-        this.logger.error(`AI bridge open failed for ${sessionId}: ${err.message}`);
-        client.emit('error', {
-          code: 'AI_UNAVAILABLE',
-          message: 'AI worker không phản hồi',
-        });
-        client.disconnect(true);
-        return;
-      }
-
-      // Chỉ emit session.ready SAU khi AI ready
       client.emit('session.ready', { clientId, sessionId });
-      this.logger.log(`Client ${clientId} joined session ${sessionId} (AI ready)`);
-    } catch (e) {
-      this.logger.error(`handleConnection error: ${e}`);
+      this.emitParticipantSnapshot(sessionId);
+      this.logger.log(
+        `Client ${clientId} joined session ${sessionId} (AI ready)`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `AI bridge open failed for ${sessionId}/${clientId}: ${message}`,
+      );
+
+      const removedCurrentClient = this.sessionStore.removeClient(
+        sessionId,
+        clientId,
+        client.id,
+      );
+      if (removedCurrentClient) {
+        this.aiBridge.closeClientSession(sessionId, clientId);
+      }
+
+      client.emit('error', {
+        code: 'AI_UNAVAILABLE',
+        message: 'The AI worker is unavailable.',
+      });
       client.disconnect(true);
     }
   }
 
-  handleDisconnect(client: Socket) {
-    const sessionId = client.data.sessionId;
-    const clientId = client.data.clientId;
+  handleDisconnect(client: Socket): void {
+    const { sessionId, clientId } = getSocketData(client);
     if (!sessionId || !clientId) return;
 
-    this.sessionStore.removeClient(sessionId, clientId);
-    this.logger.log(`Client ${clientId} left session ${sessionId}`);
+    const removedCurrentClient = this.sessionStore.removeClient(
+      sessionId,
+      clientId,
+      client.id,
+    );
 
-    if (this.sessionStore.clientCount(sessionId) === 0) {
-      this.aiBridge.closeSession(sessionId);
+    if (!removedCurrentClient) {
+      this.logger.debug(
+        `Ignored stale disconnect for ${clientId} in session ${sessionId}`,
+      );
+      return;
     }
+
+    this.aiBridge.closeClientSession(sessionId, clientId);
+    this.emitParticipantSnapshot(sessionId);
+    this.logger.log(`Client ${clientId} left session ${sessionId}`);
   }
 
   @SubscribeMessage('audio.chunk')
-  onAudio(@ConnectedSocket() client: Socket, @MessageBody() chunk: ArrayBuffer) {
-    const sessionId = client.data.sessionId;
-    const clientId = client.data.clientId;
+  onAudio(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() value: unknown,
+  ): void {
+    const { sessionId, clientId } = getSocketData(client);
     if (!sessionId || !clientId) return;
 
-    // Đánh dấu client này là speaker hiện tại
-    // Mỗi chunk audio đến → cập nhật, đảm bảo speaker luôn là người mới nhất đang nói
-    this.sessionStore.setCurrentSpeaker(sessionId, clientId);
+    if (
+      !this.sessionStore.isLive(sessionId) ||
+      !this.sessionStore.isCurrentClient(sessionId, clientId, client.id)
+    ) {
+      return;
+    }
 
-    this.aiBridge.forwardAudio(sessionId, chunk as any);
+    const chunk = getAudioChunk(value);
+    if (!chunk) {
+      client.emit('error', {
+        code: 'INVALID_AUDIO_CHUNK',
+        message: 'audio.chunk must contain binary PCM data.',
+      });
+      return;
+    }
+
+    this.aiBridge.forwardAudio(sessionId, clientId, chunk);
   }
 
   @SubscribeMessage('speaker.switch')
   onSpeakerSwitch(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { speaker: 'vi' | 'en' },
-  ) {
-    const sessionId = client.data.sessionId;
-    if (!sessionId) return;
-    this.aiBridge.sendControl(sessionId, { type: 'speaker.switch', ...body });
+    @MessageBody() body: SpeakerSwitchPayload,
+  ): void {
+    const { sessionId, clientId } = getSocketData(client);
+    if (!sessionId || !clientId) return;
+
+    const speaker =
+      body?.speaker === 'vi' || body?.speaker === 'en'
+        ? body.speaker
+        : undefined;
+
+    if (
+      !speaker ||
+      !this.sessionStore.isLive(sessionId) ||
+      !this.sessionStore.isCurrentClient(sessionId, clientId, client.id)
+    ) {
+      return;
+    }
+
+    this.sessionStore.updateClientLanguage(sessionId, clientId, speaker);
+    this.emitParticipantSnapshot(sessionId);
+    this.aiBridge.sendControl(sessionId, clientId, {
+      type: 'speaker.switch',
+      speaker,
+    });
   }
 
   @SubscribeMessage('session.end')
-  onSessionEnd(@ConnectedSocket() client: Socket) {
-    const sessionId = client.data.sessionId;
-    if (!sessionId) return;
-    this.sessionStore.end(sessionId);
-    this.server.to(sessionId).emit('session.ended');
-    this.aiBridge.closeSession(sessionId);
+  onSessionEnd(@ConnectedSocket() client: Socket): void {
+    const { sessionId, clientId } = getSocketData(client);
+    if (!sessionId || !clientId) return;
+
+    if (
+      !this.sessionStore.isCurrentClient(sessionId, clientId, client.id) ||
+      !this.sessionStore.end(sessionId)
+    ) {
+      return;
+    }
+
+    this.server.to(sessionId).emit('session.ended', { sessionId });
+    this.aiBridge.closeRoomSessions(sessionId);
+    this.server.in(sessionId).disconnectSockets(true);
   }
 
   @OnEvent('ai.event')
-  handleAiEvent(payload: AiEventPayload) {
-    const { sessionId, ...event } = payload;
+  handleAiEvent(payload: AiEventPayload): void {
+    const { sessionId, clientId, ...event } = payload;
+    if (!this.sessionStore.isLive(sessionId)) return;
+    const clientMetadata = this.sessionStore.getClientMetadata(
+      sessionId,
+      clientId,
+    );
 
-    // Lấy speaker hiện tại của session
-    const currentSpeakerClientId = this.sessionStore.getCurrentSpeaker(sessionId);
-
-    // Chèn clientId vào mọi event trước khi broadcast
-    const enrichedEvent = {
+    this.server.to(sessionId).emit(event.type, {
       ...event,
-      clientId: currentSpeakerClientId,
-    };
+      clientId,
+      displayName: clientMetadata?.displayName,
+    });
 
-    this.server.to(sessionId).emit(event.type, enrichedEvent);
-
-    if (event.type === 'translate.done') {
+    if (payload.type === 'translate.done') {
       this.sessionStore.appendUtterance(sessionId, {
-        id: event.utteranceId,
-        speaker: event.speaker,
-        clientId: currentSpeakerClientId,          // ← THÊM (lưu vào history)
-        sourceText: event.sourceText,
-        translatedText: event.fullText,
+        id: payload.utteranceId,
+        speaker: payload.speaker,
+        clientId,
+        sourceText: payload.sourceText,
+        translatedText: payload.fullText,
         timestamp: Date.now(),
       });
     }
+  }
+
+  private emitParticipantSnapshot(sessionId: string): void {
+    const snapshot = this.sessionStore.getPublicSnapshot(sessionId);
+    if (!snapshot.exists) return;
+
+    this.server.to(sessionId).emit('session.participants', {
+      participants: snapshot.participants,
+    });
   }
 }

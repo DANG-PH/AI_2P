@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { isEditableTarget } from '@/lib/utils'
-import type { ConversationMode, Language } from '@/types/meeting'
+import type { ConversationMode } from '@/types/meeting'
 
 const isInteractiveTarget = (target: EventTarget | null): boolean => {
   if (isEditableTarget(target) || !(target instanceof HTMLElement)) {
@@ -15,11 +15,20 @@ const isInteractiveTarget = (target: EventTarget | null): boolean => {
   )
 }
 
-export function usePushToTalk(mode: ConversationMode) {
-  const [activeLanguage, setActiveLanguage] = useState<Language | null>(null)
+export function usePushToTalk(
+  mode: ConversationMode,
+  enabled = true,
+) {
+  const [active, setActive] = useState(false)
+  const start = useCallback(() => {
+    if (enabled) {
+      setActive(true)
+    }
+  }, [enabled])
+  const stop = useCallback(() => setActive(false), [])
 
   useEffect(() => {
-    if (mode !== 'push-to-talk') {
+    if (mode !== 'push-to-talk' || !enabled) {
       return
     }
 
@@ -27,33 +36,36 @@ export function usePushToTalk(mode: ConversationMode) {
       if (
         event.repeat ||
         isInteractiveTarget(event.target) ||
-        (event.code !== 'Space' && event.code !== 'Enter')
+        event.code !== 'Space'
       ) {
         return
       }
 
       event.preventDefault()
-      setActiveLanguage(event.code === 'Space' ? 'vi' : 'en')
+      start()
     }
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.code === 'Space' || event.code === 'Enter') {
-        setActiveLanguage(null)
+      if (event.code === 'Space') {
+        stop()
       }
     }
 
-    const clearActiveLanguage = () => setActiveLanguage(null)
-
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
-    window.addEventListener('blur', clearActiveLanguage)
+    window.addEventListener('blur', stop)
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
-      window.removeEventListener('blur', clearActiveLanguage)
+      window.removeEventListener('blur', stop)
+      stop()
     }
-  }, [mode])
+  }, [enabled, mode, start, stop])
 
-  return mode === 'push-to-talk' ? activeLanguage : null
+  return {
+    active: mode === 'push-to-talk' && enabled && active,
+    start,
+    stop,
+  }
 }

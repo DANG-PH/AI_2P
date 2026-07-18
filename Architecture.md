@@ -988,10 +988,13 @@ docker compose up -d livekit
 ```
 PORT=3001
 AI_WS_URL=ws://localhost:8000/ws/session
-LIVEKIT_API_KEY=<khớp livekit.yaml>
-LIVEKIT_API_SECRET=<khớp livekit.yaml>
+LIVEKIT_API_KEY=<cùng key với biến môi trường của LiveKit>
+LIVEKIT_API_SECRET=<cùng secret với biến môi trường của LiveKit>
 LIVEKIT_URL=wss://livekit-hackathon.dangpham.id.vn
 ```
+
+LiveKit container đọc cùng cặp thông tin xác thực qua `infra/.env` (xem
+`infra/.env.example`); không lưu key/secret thật trong `livekit.yaml`.
 
 ---
 
@@ -1002,7 +1005,7 @@ LIVEKIT_URL=wss://livekit-hackathon.dangpham.id.vn
 | Client connect Socket.IO bị disconnect ngay | Thiếu `sessionId` hoặc `clientId` trong query | Check query string |
 | Client emit audio nhưng không có transcript | `session.ready` đến trước khi AI bridge mở nên chunk có thể bị drop | Bổ sung/đợi AI-ready thật sự |
 | `translate.done` xong nhưng export DOCX rỗng | FastAPI thiếu `sourceText` hoặc `speaker` field | Check FastAPI event schema |
-| LiveKit connect fail "invalid token" | Key/secret `.env` không khớp `livekit.yaml` | Verify 2 file khớp chính xác |
+| LiveKit connect fail "invalid token" | Key/secret của NestJS không khớp biến môi trường của LiveKit | Verify 2 deployment dùng cùng cặp key/secret |
 | Video call kết nối nhưng không thấy hình | Firewall chặn UDP 50000-50100 | Mở UFW |
 | WSS "Mixed Content" error trên frontend HTTPS | LIVEKIT_URL đang là `ws://` | Đổi sang `wss://` |
 | FastAPI crash khi nhận audio | PCM format sai (không phải Int16 16kHz mono) | Client check AudioWorklet convert đúng |

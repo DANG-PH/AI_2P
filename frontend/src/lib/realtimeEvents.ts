@@ -35,16 +35,20 @@ const createTurn = (
   >,
   receivedAt: number,
 ): ConversationTurn => {
-  const speaker = meeting.participants.find(
-    (participant) => participant.language === event.speaker,
-  )
+  const speaker =
+    meeting.participants.find((participant) => participant.id === event.clientId) ??
+    meeting.participants.find((participant) => participant.language === event.speaker)
+  const speakerName =
+    event.displayName?.trim() ||
+    speaker?.name.trim() ||
+    event.speaker.toUpperCase()
 
   return {
     id: event.utteranceId,
     roomId: meeting.id,
     sequenceNumber: meeting.turns.length + 1,
-    speakerId: speaker?.id ?? `speaker-${event.speaker}`,
-    speakerName: speaker?.name ?? event.speaker.toUpperCase(),
+    speakerId: event.clientId ?? speaker?.id ?? `speaker-${event.speaker}`,
+    speakerName,
     sourceLanguage: event.speaker,
     targetLanguage: getTargetLanguage(event.speaker),
     timestampSeconds: getElapsedSeconds(meeting, receivedAt),
@@ -81,6 +85,14 @@ export const applyRealtimeTranscriptEvent = (
     }
 
     baseTurn = createTurn(meeting, event, receivedAt)
+  }
+
+  const eventDisplayName = event.displayName?.trim()
+  if (eventDisplayName && baseTurn.speakerName !== eventDisplayName) {
+    baseTurn = {
+      ...baseTurn,
+      speakerName: eventDisplayName,
+    }
   }
 
   let nextTurn: ConversationTurn

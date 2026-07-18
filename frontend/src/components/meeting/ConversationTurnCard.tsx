@@ -95,7 +95,7 @@ export function ConversationTurnCard({
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <p className="truncate text-sm font-bold text-ink">
+              <p className="min-w-0 max-w-full truncate text-sm font-bold text-ink">
                 {turn.speakerName}
               </p>
               <span className="rounded-md bg-panel-muted px-1.5 py-0.5 text-[0.625rem] font-semibold text-muted-strong">
@@ -125,7 +125,7 @@ export function ConversationTurnCard({
                 <p
                   lang={turn.sourceLanguage}
                   className={cn(
-                    'min-h-5 leading-6 text-muted-strong',
+                    'min-h-5 break-words leading-6 text-muted-strong',
                     compact ? 'text-sm' : 'text-sm',
                   )}
                 >
@@ -183,7 +183,7 @@ export function ConversationTurnCard({
                 <p
                   lang={turn.targetLanguage}
                   className={cn(
-                    'min-h-7 font-semibold leading-7 text-ink',
+                    'min-h-7 break-words font-semibold leading-7 text-ink',
                     compact ? 'text-sm' : 'text-[0.9375rem]',
                     turn.status === 'draft' && 'text-ink-soft',
                   )}
@@ -230,7 +230,7 @@ export function ConversationTurnCard({
             </p>
             <p
               lang={turn.sourceLanguage}
-              className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm leading-6 text-ink-soft"
+              className="break-words rounded-lg border border-line bg-canvas px-4 py-3 text-sm leading-6 text-ink-soft"
             >
               {turn.originalText}
             </p>

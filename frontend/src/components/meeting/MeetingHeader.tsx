@@ -1,21 +1,25 @@
-import { Radio } from 'lucide-react'
+import { Check, Copy, Radio } from 'lucide-react'
 
 import { BrandMark } from '@/components/layout/BrandMark'
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useTranslation } from '@/hooks/useTranslation'
+import { useClipboard } from '@/hooks/useClipboard'
 import { formatElapsedTime } from '@/lib/formatters'
 
 export interface MeetingHeaderProps {
   title: string
+  roomId: string
   elapsedSeconds: number
 }
 
 export function MeetingHeader({
   title,
+  roomId,
   elapsedSeconds,
 }: MeetingHeaderProps) {
   const { t } = useTranslation()
+  const { copy, copyState } = useClipboard()
   const elapsedTime = formatElapsedTime(elapsedSeconds)
 
   return (
@@ -31,6 +35,39 @@ export function MeetingHeader({
             {title}
           </h1>
         </div>
+
+        <button
+          type="button"
+          onClick={() => void copy(roomId)}
+          className="hidden min-w-0 items-center gap-2 rounded-[10px] border border-line-strong bg-panel-muted px-3 py-2 text-left transition-colors hover:border-primary sm:flex"
+          aria-label={t('meeting.copyRoomCode', { code: roomId })}
+        >
+          <span className="min-w-0">
+            <span className="block text-[0.5625rem] font-bold uppercase tracking-[0.12em] text-muted">
+              {t('meeting.roomCode')}
+            </span>
+            <span className="block max-w-44 truncate font-mono text-xs font-semibold text-ink-soft">
+              {roomId}
+            </span>
+          </span>
+          {copyState === 'copied' ? (
+            <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
+          ) : (
+            <Copy className="size-4 shrink-0 text-muted" aria-hidden="true" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => void copy(roomId)}
+          className="grid size-10 shrink-0 place-items-center rounded-[10px] border border-line-strong text-muted transition-colors hover:border-primary hover:text-primary sm:hidden"
+          aria-label={t('meeting.copyRoomCode', { code: roomId })}
+        >
+          {copyState === 'copied' ? (
+            <Check className="size-4 text-success" aria-hidden="true" />
+          ) : (
+            <Copy className="size-4" aria-hidden="true" />
+          )}
+        </button>
 
         <LocaleSwitcher className="size-10 justify-center px-0 [&>span]:hidden" />
         <StatusBadge

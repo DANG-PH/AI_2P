@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { createInitialMeeting } from '../data/mockMeeting'
+import { createInitialMeeting } from '../data/initialMeeting'
 import { clamp, createEntityId } from '../lib/utils'
 import { getOrCreateClientId } from '../lib/meetingIdentity'
 import { applyRealtimeTranscriptEvent } from '../lib/realtimeEvents'
@@ -7,7 +7,6 @@ import type {
   ConversationMode,
   ConversationTurn,
   ConversationTurnUpdate,
-  DemoStatus,
   GlossaryTermInput,
   GlossaryTermUpdate,
   Language,
@@ -20,6 +19,7 @@ import type {
 import type {
   RealtimeServerEvent,
   RealtimeSessionState,
+  RealtimeTranscriptEvent,
 } from '../types/realtime'
 
 export interface MeetingStoreState {
@@ -28,8 +28,6 @@ export interface MeetingStoreState {
   microphoneTestStatus: MicrophoneTestStatus
   audioInputLevel: number
   noiseLevel: NoiseLevel
-  demoStatus: DemoStatus
-  demoRunId: number
   activeTurnId: string | null
   realtimeSession: RealtimeSessionState
 }
@@ -39,6 +37,7 @@ export interface MeetingStoreActions {
   setMeetingTitle: (title: string) => void
   setParticipantName: (participantId: string, name: string) => void
   setParticipantNameByLanguage: (language: Language, name: string) => void
+  setLocalLanguage: (language: Language) => void
   setConversationMode: (mode: ConversationMode) => void
   setMicrophone: (microphoneId: string) => void
   setMicrophoneEnabled: (enabled: boolean) => void
@@ -64,11 +63,8 @@ export interface MeetingStoreActions {
   endMeeting: (endedAt?: string, durationSeconds?: number) => void
   prepareAnotherMeeting: () => void
   resetMeeting: () => void
-  setDemoStatus: (status: DemoStatus) => void
-  beginDemo: () => number
-  completeDemo: () => void
-  resetDemo: () => void
   setActiveTurnId: (turnId: string | null) => void
+  setRealtimeStatus: (status: RealtimeSessionState['status']) => void
   applyRealtimeEvent: (
     event: RealtimeServerEvent,
     receivedAt?: number,
@@ -101,15 +97,54 @@ const createInitialStoreState = (): MeetingStoreState => ({
   microphoneTestStatus: 'idle',
   audioInputLevel: 0,
   noiseLevel: 'low',
-  demoStatus: 'idle',
-  demoRunId: 0,
   activeTurnId: null,
   realtimeSession: {
     clientId: getOrCreateClientId(),
-    status: 'mock',
+    status: 'connecting',
     lastError: null,
   },
 })
+
+const syncRealtimeParticipant = (
+  meeting: Meeting,
+  event: RealtimeTranscriptEvent,
+): Meeting => {
+  if (
+    event.type === 'translate.token' ||
+    !event.clientId ||
+    !event.displayName?.trim()
+  ) {
+    return meeting
+  }
+
+  const displayName = event.displayName.trim()
+  const clientId = event.clientId
+  let changed = false
+  const participants = meeting.participants.map((participant) => {
+    if (
+      participant.id !== clientId &&
+      participant.language !== event.speaker
+    ) {
+      return participant
+    }
+
+    if (
+      participant.id === clientId &&
+      participant.name === displayName
+    ) {
+      return participant
+    }
+
+    changed = true
+    return {
+      ...participant,
+      id: clientId,
+      name: displayName,
+    }
+  })
+
+  return changed ? { ...meeting, participants } : meeting
+}
 
 export const useMeetingStore = create<MeetingStore>()((set) => ({
   ...createInitialStoreState(),
@@ -160,6 +195,18 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
             ? { ...participant, name }
             : participant,
         ),
+      },
+    }))
+  },
+
+  setLocalLanguage: (localLanguage) => {
+    const otherLanguage: Language = localLanguage === 'vi' ? 'en' : 'vi'
+
+    set((state) => ({
+      meeting: {
+        ...state.meeting,
+        localLanguage,
+        languageOrder: [localLanguage, otherLanguage],
       },
     }))
   },
@@ -397,12 +444,10 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
         endedAt: null,
         durationSeconds: 0,
       },
-      demoStatus: 'idle',
-      demoRunId: state.demoRunId + 1,
       activeTurnId: null,
       realtimeSession: {
         ...state.realtimeSession,
-        status: 'mock',
+        status: 'connecting',
         lastError: null,
       },
     }))
@@ -421,9 +466,6 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
           durationSeconds ??
           calculateDurationSeconds(state.meeting.startedAt, endedAt),
       },
-      demoStatus:
-        state.demoStatus === 'running' ? 'complete' : state.demoStatus,
-      demoRunId: state.demoRunId + 1,
       activeTurnId: null,
     }))
   },
@@ -442,70 +484,32 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
       microphoneEnabled: true,
       microphoneTestStatus: 'idle',
       audioInputLevel: 0,
-      demoStatus: 'idle',
-      demoRunId: state.demoRunId + 1,
       activeTurnId: null,
+      realtimeSession: {
+        ...state.realtimeSession,
+        status: 'connecting',
+        lastError: null,
+      },
     }))
   },
 
   resetMeeting: () => {
-    const initialState = createInitialStoreState()
-
-    set((state) => ({
-      ...initialState,
-      demoRunId: state.demoRunId + 1,
-    }))
-  },
-
-  setDemoStatus: (demoStatus) => {
-    set({ demoStatus })
-  },
-
-  beginDemo: () => {
-    let nextRunId = 0
-
-    set((state) => {
-      nextRunId = state.demoRunId + 1
-
-      return {
-        meeting: {
-          ...state.meeting,
-          turns: [],
-          status: 'live',
-          startedAt: state.meeting.startedAt ?? new Date().toISOString(),
-          endedAt: null,
-          durationSeconds: 0,
-        },
-        demoStatus: 'running',
-        demoRunId: nextRunId,
-        activeTurnId: null,
-      }
-    })
-
-    return nextRunId
-  },
-
-  completeDemo: () => {
-    set({
-      demoStatus: 'complete',
-      activeTurnId: null,
-    })
-  },
-
-  resetDemo: () => {
-    set((state) => ({
-      meeting: {
-        ...state.meeting,
-        turns: [],
-      },
-      demoStatus: 'idle',
-      demoRunId: state.demoRunId + 1,
-      activeTurnId: null,
-    }))
+    set(createInitialStoreState())
   },
 
   setActiveTurnId: (activeTurnId) => {
     set({ activeTurnId })
+  },
+
+  setRealtimeStatus: (status) => {
+    set((state) => ({
+      realtimeSession: {
+        ...state.realtimeSession,
+        status,
+        lastError:
+          status === 'error' ? state.realtimeSession.lastError : null,
+      },
+    }))
   },
 
   applyRealtimeEvent: (event, receivedAt = Date.now()) => {
@@ -519,6 +523,43 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
               lastError: null,
             },
           }
+        case 'session.participants': {
+          const participants = state.meeting.participants.map(
+            (participant) => {
+              const connectedParticipant = event.participants.find(
+                (candidate) =>
+                  candidate.language === participant.language,
+              )
+
+              if (connectedParticipant) {
+                return {
+                  ...participant,
+                  id: connectedParticipant.clientId,
+                  name: connectedParticipant.displayName.trim(),
+                }
+              }
+
+              if (
+                participant.id === state.realtimeSession.clientId
+              ) {
+                return participant
+              }
+
+              return {
+                ...participant,
+                id: `participant-${participant.language}`,
+                name: '',
+              }
+            },
+          )
+
+          return {
+            meeting: {
+              ...state.meeting,
+              participants,
+            },
+          }
+        }
         case 'session.ended':
           return {
             realtimeSession: {
@@ -548,14 +589,20 @@ export const useMeetingStore = create<MeetingStore>()((set) => ({
         case 'stt.final':
         case 'translate.token':
         case 'translate.done': {
-          const update = applyRealtimeTranscriptEvent(
+          const meeting = syncRealtimeParticipant(
             state.meeting,
+            event,
+          )
+          const update = applyRealtimeTranscriptEvent(
+            meeting,
             event,
             receivedAt,
           )
 
           if (update === null) {
-            return state
+            return meeting === state.meeting
+              ? state
+              : { meeting }
           }
 
           return update

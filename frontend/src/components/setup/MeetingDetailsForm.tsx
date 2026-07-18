@@ -11,28 +11,28 @@ import { useTranslation } from '@/hooks/useTranslation'
 import type { TranslationKey } from '@/i18n/translations'
 import { cn } from '@/lib/utils'
 import { useMeetingStore } from '@/store/meetingStore'
-import type { ConversationMode, Language } from '@/types/meeting'
+import type { ConversationMode } from '@/types/meeting'
 
 import { MicrophoneTest } from './MicrophoneTest'
 
 export const MEETING_SETUP_FORM_ID = 'meeting-setup-form'
 
-type RequiredField = 'title' | Language
+type RequiredField = 'title' | 'userName'
 
 type TouchedFields = Record<RequiredField, boolean>
 
 interface MeetingDetailsFormProps {
   onValidSubmit: () => void
+  isJoining?: boolean
 }
 
 const initialTouchedFields: TouchedFields = {
   title: false,
-  vi: false,
-  en: false,
+  userName: false,
 }
 
 const inputClassName =
-  'h-12 w-full rounded-[10px] border bg-panel px-3.5 text-base text-ink placeholder:text-muted transition-colors hover:border-muted focus:border-primary'
+  'h-12 w-full rounded-[10px] border bg-panel px-3.5 text-base text-ink outline-none placeholder:text-muted transition-colors hover:border-muted focus:border-primary focus:ring-2 focus:ring-primary/15'
 
 const modeOptions: readonly {
   value: ConversationMode
@@ -53,6 +53,7 @@ const modeOptions: readonly {
 
 export function MeetingDetailsForm({
   onValidSubmit,
+  isJoining = false,
 }: MeetingDetailsFormProps) {
   const { t } = useTranslation()
   const meeting = useMeetingStore((state) => state.meeting)
@@ -65,26 +66,26 @@ export function MeetingDetailsForm({
   const setConversationMode = useMeetingStore(
     (state) => state.setConversationMode,
   )
+  const setLocalLanguage = useMeetingStore(
+    (state) => state.setLocalLanguage,
+  )
   const [touched, setTouched] =
     useState<TouchedFields>(initialTouchedFields)
 
-  const vietnameseParticipant =
-    meeting.participants.find((participant) => participant.language === 'vi')
-      ?.name ?? ''
-  const englishParticipant =
-    meeting.participants.find((participant) => participant.language === 'en')
-      ?.name ?? ''
+  const userLanguage = meeting.localLanguage
+  const userName =
+    meeting.participants.find(
+      (participant) => participant.language === userLanguage,
+    )?.name ?? ''
 
   const fieldValues: Record<RequiredField, string> = {
     title: meeting.title,
-    vi: vietnameseParticipant,
-    en: englishParticipant,
+    userName: userName,
   }
 
   const fieldLabels: Record<RequiredField, string> = {
     title: t('details.meetingTitle'),
-    vi: t('details.vietnameseParticipant'),
-    en: t('details.englishParticipant'),
+    userName: t('details.yourName'),
   }
 
   const getRequiredError = (label: string, value: string): string | null =>
@@ -108,72 +109,40 @@ export function MeetingDetailsForm({
     event.preventDefault()
 
     const allTouched: TouchedFields = {
-      title: true,
-      vi: true,
-      en: true,
+      title: !isJoining,
+      userName: true,
     }
     setTouched(allTouched)
 
     const hasError = (
       Object.keys(fieldValues) as RequiredField[]
-    ).some(
-      (field) =>
-        getRequiredError(fieldLabels[field], fieldValues[field]) !== null,
-    )
+    ).some((field) => {
+      if (isJoining && field === 'title') {
+        return false
+      }
+      return (
+        getRequiredError(fieldLabels[field], fieldValues[field]) !== null
+      )
+    })
 
     if (!hasError) {
       onValidSubmit()
     }
   }
 
-  const renderParticipantField = (
-    language: Language,
-    value: string,
-    accentClassName: string,
-  ) => {
-    const error = getVisibleError(language)
-    const inputId = `participant-${language}`
+  const titleError = isJoining ? null : getVisibleError('title')
+  const userNameError = getVisibleError('userName')
 
-    return (
-      <FormField
-        htmlFor={inputId}
-        label={`${fieldLabels[language]} · ${language.toUpperCase()}`}
-        required
-        error={error ?? undefined}
-      >
-        <div className="relative">
-          <span
-            aria-hidden="true"
-            className={cn(
-              'absolute inset-y-3 left-0 w-0.5 rounded-full',
-              accentClassName,
-            )}
-          />
-          <input
-            id={inputId}
-            value={value}
-            onChange={(event) =>
-              setParticipantNameByLanguage(language, event.target.value)
-            }
-            onBlur={() => markTouched(language)}
-            aria-invalid={error !== null}
-            aria-describedby={
-              error ? `${inputId}-support` : undefined
-            }
-            maxLength={MAX_PARTICIPANT_NAME_LENGTH}
-            autoComplete="name"
-            className={cn(
-              inputClassName,
-              'pl-4',
-              error ? 'border-danger' : 'border-line-strong',
-            )}
-          />
-        </div>
-      </FormField>
-    )
+  const selectLanguage = (language: 'vi' | 'en') => {
+    if (language === userLanguage) {
+      return
+    }
+
+    const otherLanguage = language === 'vi' ? 'en' : 'vi'
+    setParticipantNameByLanguage(language, userName)
+    setParticipantNameByLanguage(otherLanguage, '')
+    setLocalLanguage(language)
   }
-
-  const titleError = getVisibleError('title')
 
   return (
     <form
@@ -191,54 +160,119 @@ export function MeetingDetailsForm({
             id="meeting-details-heading"
             className="mt-2 text-xl font-semibold tracking-tight text-ink"
           >
-            {t('details.title')}
+            {isJoining ? t('details.joinTitle') : t('details.title')}
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            {t('details.description')}
+            {isJoining ? t('details.joinDescription') : t('details.description')}
           </p>
         </div>
 
-        <FormField
-          htmlFor="meeting-title"
-          label={t('details.meetingTitle')}
-          required
-          error={titleError ?? undefined}
-          description={t('details.meetingTitleDescription')}
-        >
-          <input
-            id="meeting-title"
-            value={meeting.title}
-            onChange={(event) => setMeetingTitle(event.target.value)}
-            onBlur={() => markTouched('title')}
-            aria-invalid={titleError !== null}
-            aria-describedby="meeting-title-support"
-            maxLength={MAX_MEETING_TITLE_LENGTH}
-            autoComplete="off"
-            className={cn(
-              inputClassName,
-              titleError ? 'border-danger' : 'border-line-strong',
-            )}
-          />
-        </FormField>
+        {!isJoining && (
+          <FormField
+            htmlFor="meeting-title"
+            label={t('details.meetingTitle')}
+            required
+            error={titleError ?? undefined}
+            description={t('details.meetingTitleDescription')}
+          >
+            <input
+              id="meeting-title"
+              value={meeting.title}
+              onChange={(event) =>
+                setMeetingTitle(event.target.value)
+              }
+              onBlur={() => markTouched('title')}
+              aria-invalid={titleError !== null}
+              aria-describedby="meeting-title-support"
+              maxLength={MAX_MEETING_TITLE_LENGTH}
+              autoComplete="off"
+              className={cn(
+                inputClassName,
+                titleError
+                  ? 'border-danger'
+                  : 'border-line-strong',
+              )}
+            />
+          </FormField>
+        )}
 
         <div className="mt-6 grid gap-5 sm:grid-cols-2">
-          {renderParticipantField(
-            'vi',
-            vietnameseParticipant,
-            'bg-vietnamese',
-          )}
-          {renderParticipantField(
-            'en',
-            englishParticipant,
-            'bg-english',
-          )}
+          <FormField
+            htmlFor="user-name"
+            label={t('details.yourName')}
+            required
+            error={userNameError ?? undefined}
+          >
+            <input
+              id="user-name"
+              value={userName}
+              onChange={(event) => {
+                setParticipantNameByLanguage(
+                  userLanguage,
+                  event.target.value,
+                )
+              }}
+              onBlur={() => markTouched('userName')}
+              aria-invalid={userNameError !== null}
+              aria-describedby={
+                userNameError ? 'user-name-support' : undefined
+              }
+              maxLength={MAX_PARTICIPANT_NAME_LENGTH}
+              autoComplete="name"
+              className={cn(
+                inputClassName,
+                'pl-4',
+                userNameError
+                  ? 'border-danger'
+                  : 'border-line-strong',
+              )}
+            />
+          </FormField>
+
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-semibold tracking-[-0.01em] text-ink-soft">
+              {t('details.yourLanguage')}
+              <span className="ml-1 text-danger" aria-hidden="true">
+                *
+              </span>
+            </legend>
+            <div className="grid h-12 grid-cols-2 gap-2">
+              <button
+                type="button"
+                aria-pressed={userLanguage === 'vi'}
+                onClick={() => selectLanguage('vi')}
+                className={cn(
+                  'flex cursor-pointer items-center justify-center rounded-[10px] border text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                  userLanguage === 'vi'
+                    ? 'border-vietnamese/80 bg-vietnamese/10 text-vietnamese-soft'
+                    : 'border-line bg-panel text-muted hover:border-line-strong',
+                )}
+              >
+                {t('details.vietnamese')} · VI
+              </button>
+              <button
+                type="button"
+                aria-pressed={userLanguage === 'en'}
+                onClick={() => selectLanguage('en')}
+                className={cn(
+                  'flex cursor-pointer items-center justify-center rounded-[10px] border text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                  userLanguage === 'en'
+                    ? 'border-english/80 bg-english/10 text-english-soft'
+                    : 'border-line bg-panel text-muted hover:border-line-strong',
+                )}
+              >
+                {t('details.english')} · EN
+              </button>
+            </div>
+          </fieldset>
         </div>
       </section>
 
-      <section
-        aria-labelledby="conversation-mode-heading"
-        className="mt-8 border-t border-line pt-7"
-      >
+      {!isJoining && (
+        <section
+          aria-labelledby="conversation-mode-heading"
+          className="mt-8 border-t border-line pt-7"
+        >
         <div className="mb-4 flex items-start gap-3">
           <Radio
             aria-hidden="true"
@@ -292,7 +326,8 @@ export function MeetingDetailsForm({
             )
           })}
         </fieldset>
-      </section>
+        </section>
+      )}
 
       <div className="mt-8">
         <MicrophoneTest />

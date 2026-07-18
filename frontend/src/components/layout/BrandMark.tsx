@@ -15,7 +15,7 @@ const mark = (
     <img
       aria-hidden="true"
       alt=""
-      className="size-8 rounded-[8px]"
+      className="size-8 object-contain"
       src={logoUrl}
     />
     <span className="font-bold tracking-[-0.04em]">

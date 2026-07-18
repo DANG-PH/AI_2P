@@ -1,37 +1,35 @@
-import { AudioLines, Check, FlaskConical, Languages } from 'lucide-react'
+import { AudioLines, Check, FileText, Languages } from 'lucide-react'
 
 import { useTranslation } from '@/hooks/useTranslation'
+import type { TranslationKey } from '@/i18n/translations'
 
 const audioLevels = [24, 48, 68, 42, 82, 58, 34, 72, 52, 88, 46, 64, 30, 54]
 
 interface PreviewTurn {
   id: string
-  speaker: string
+  speakerKey: TranslationKey
   sourceLanguage: 'VI' | 'EN'
   timestamp: string
-  original: string
-  translation: string
+  originalKey: TranslationKey
+  translationKey: TranslationKey
 }
 
 const previewTurns: readonly PreviewTurn[] = [
   {
     id: 'preview-nguyen-minh',
-    speaker: 'Nguyễn Minh',
+    speakerKey: 'preview.turnOneSpeaker',
     sourceLanguage: 'VI',
     timestamp: '00:08',
-    original:
-      'Xin chào ông James. Chúng tôi muốn thảo luận về khả năng triển khai một dự án thử nghiệm tại Việt Nam.',
-    translation:
-      'Hello, James. We would like to discuss the possibility of launching a pilot project in Vietnam.',
+    originalKey: 'preview.turnOneOriginal',
+    translationKey: 'preview.turnOneTranslation',
   },
   {
     id: 'preview-james-tan',
-    speaker: 'James Tan',
+    speakerKey: 'preview.turnTwoSpeaker',
     sourceLanguage: 'EN',
     timestamp: '00:24',
-    original: 'That sounds promising. What timeline are you considering?',
-    translation:
-      'Điều đó nghe rất triển vọng. Các bạn đang dự kiến tiến độ như thế nào?',
+    originalKey: 'preview.turnTwoOriginal',
+    translationKey: 'preview.turnTwoTranslation',
   },
 ]
 
@@ -69,7 +67,7 @@ export function ConversationPreview() {
 
         <span className="inline-flex shrink-0 items-center gap-2 rounded-md border border-line-strong bg-panel-muted px-2.5 py-1.5 text-[0.625rem] font-semibold tracking-[0.12em] text-muted-strong uppercase">
           <span className="size-1.5 rounded-full bg-warning" />
-          {t('common.simulated')}
+          {t('common.example')}
         </span>
       </div>
 
@@ -114,7 +112,7 @@ export function ConversationPreview() {
                   className={`size-2 rounded-full ${accent.dot}`}
                 />
                 <h2 className="text-sm font-semibold text-ink">
-                  {turn.speaker}
+                  {t(turn.speakerKey)}
                 </h2>
                 <span
                   className={`text-[0.625rem] font-bold tracking-[0.14em] ${accent.label}`}
@@ -127,17 +125,17 @@ export function ConversationPreview() {
               </header>
 
               <p className="mt-3 text-[0.9375rem] leading-6 text-ink-soft">
-                {turn.original}
+                {t(turn.originalKey)}
               </p>
 
               <div
-                className={`mt-4 grid grid-cols-[2.25rem_1fr] gap-3 border-t border-line px-0 pt-3 ${accent.translation}`}
+                className={`mt-4 grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-3 border-t border-line px-0 pt-3 ${accent.translation}`}
               >
                 <span className="pt-0.5 text-[0.625rem] font-bold tracking-[0.14em] text-muted">
                   {targetLanguage}
                 </span>
-                <p className="text-sm leading-6 text-muted-strong">
-                  {turn.translation}
+                <p className="min-w-0 break-words text-sm leading-6 text-muted-strong">
+                  {t(turn.translationKey)}
                 </p>
               </div>
 
@@ -156,8 +154,8 @@ export function ConversationPreview() {
           {t('preview.connection')}
         </span>
         <span className="flex items-center gap-2 sm:justify-center">
-          <FlaskConical aria-hidden="true" className="size-3.5" />
-          {t('preview.cloudPrototype')}
+          <FileText aria-hidden="true" className="size-3.5" />
+          {t('preview.transcript')}
         </span>
         <span className="sm:text-right">{t('preview.latency')}</span>
       </footer>
