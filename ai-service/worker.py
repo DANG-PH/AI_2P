@@ -70,11 +70,13 @@ def get_shared_asr_engine() -> ASREngine:
     global _SHARED_ASR_ENGINE
     if _SHARED_ASR_ENGINE is None:
         _SHARED_ASR_ENGINE = ASREngine()
-        # FIX: chi ep load Whisper local neu KHONG dung FPT ASR. Truoc day
-        # goi _ensure_model() vo dieu kien, bo qua FPT_ASR=true trong .env,
-        # khien Whisper large-v3 (~2.9GB) van bi tai ve va load vao RAM.
-        if not getattr(_SHARED_ASR_ENGINE, "_use_fpt_asr", False):
-            _SHARED_ASR_ENGINE._ensure_model()
+        # FIX: dung preflight() - ham nay da tu kiem tra self._use_fpt_asr
+        # (dat tu FPT_ASR trong .env) va chi goi _ensure_model() (tai
+        # Whisper local ~2.9GB) khi KHONG dung FPT ASR. Truoc day worker.py
+        # goi thang _ensure_model() vo dieu kien nen luon tai Whisper du
+        # FPT_ASR=true. preflight() cung validate FPT API key ngay luc
+        # khoi dong thay vi doi den request dau tien moi bao loi.
+        _SHARED_ASR_ENGINE.preflight()
     return _SHARED_ASR_ENGINE
 
 
