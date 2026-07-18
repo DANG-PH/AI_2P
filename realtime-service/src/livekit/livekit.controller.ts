@@ -18,7 +18,8 @@ export class LivekitController {
     const participantIdentity = body.participantName?.trim() ?? '';
 
     if (
-      !/^vien-[a-z0-9]{8,64}$/i.test(roomName) ||
+      roomName.length === 0 ||
+      roomName.length > 128 ||
       participantIdentity.length === 0 ||
       participantIdentity.length > 128
     ) {
