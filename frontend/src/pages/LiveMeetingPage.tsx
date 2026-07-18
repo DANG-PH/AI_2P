@@ -466,7 +466,7 @@ export default function LiveMeetingPage() {
               variant="danger"
               onClick={() => void handleEndMeeting()}
               disabled={endingMeeting}
-              className="bg-danger text-white hover:border-[#b91c1c] hover:bg-[#b91c1c]"
+              className="bg-red-600 text-white hover:border-red-400 hover:bg-red-400"
             >
               {endingMeeting
                 ? t('meeting.ending')

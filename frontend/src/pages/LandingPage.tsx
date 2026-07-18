@@ -5,9 +5,13 @@ import {
   Headphones,
   Languages,
   Mic2,
-  ShieldCheck,
 } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react'
 import { useNavigate } from 'react-router'
 
 import { BenefitStrip } from '@/components/landing/BenefitStrip'
@@ -55,6 +59,41 @@ export default function LandingPage() {
   const handleStartMeeting = () => {
     navigate(ROUTES.create)
   }
+
+  useEffect(() => {
+    const elements = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-landing-reveal]'),
+    )
+    const reduceMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+
+    if (reduceMotion || !('IntersectionObserver' in window)) {
+      elements.forEach((element) => {
+        element.dataset.landingRevealed = 'true'
+      })
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            return
+          }
+
+          const element = entry.target as HTMLElement
+          element.dataset.landingRevealed = 'true'
+          observer.unobserve(element)
+        })
+      },
+      { threshold: 0.18 },
+    )
+
+    elements.forEach((element) => observer.observe(element))
+
+    return () => observer.disconnect()
+  }, [])
 
   const handleJoinMeeting = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -111,19 +150,25 @@ export default function LandingPage() {
                   onClick={handleStartMeeting}
                   size="lg"
                   trailingIcon={
-                    <ArrowRight aria-hidden="true" className="size-4" />
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="size-4 transition-transform duration-200 ease-out group-hover:translate-x-1"
+                    />
                   }
                   variant="primary"
-                  className="w-full rounded-full px-6 shadow-[0_10px_24px_rgb(37_99_235/0.2)] sm:w-auto"
+                  className="group w-full rounded-full px-6 shadow-[0_10px_24px_rgb(37_99_235/0.2)] sm:w-auto"
                 >
                   {t('nav.startMeeting')}
                 </Button>
                 <a
                   href="#how-it-works"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold text-ink-soft transition-colors hover:bg-ink/5 hover:text-ink"
+                  className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold text-ink-soft transition-colors hover:bg-ink/5 hover:text-ink"
                 >
                   {t('landing.exploreHow')}
-                  <ArrowDown aria-hidden="true" className="size-4" />
+                  <ArrowDown
+                    aria-hidden="true"
+                    className="size-4 transition-transform duration-200 ease-out group-hover:translate-y-1"
+                  />
                 </a>
               </div>
 
@@ -187,10 +232,10 @@ export default function LandingPage() {
                       trailingIcon={
                         <ArrowRight
                           aria-hidden="true"
-                          className="size-4"
+                          className="size-4 transition-transform duration-200 ease-out group-hover:translate-x-1"
                         />
                       }
-                      className="h-12 w-full rounded-full px-6 sm:w-auto"
+                      className="group h-12 w-full rounded-full px-6 sm:w-auto"
                     >
                       {t('landing.joinButton')}
                     </Button>
@@ -257,7 +302,10 @@ export default function LandingPage() {
           className="relative scroll-mt-20 overflow-hidden px-5 py-20 sm:px-6 lg:px-8 lg:py-30"
         >
           <div className="mx-auto max-w-310">
-            <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end lg:gap-16">
+            <div
+              data-landing-reveal
+              className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end lg:gap-16"
+            >
               <div>
                 <p className="text-[0.6875rem] font-bold tracking-[0.15em] text-primary uppercase">
                   {t('landing.howEyebrow')}
@@ -275,10 +323,14 @@ export default function LandingPage() {
             </div>
 
             <div className="mt-14 grid border-t border-ink/15 md:grid-cols-3">
-              {flowSteps.map((step) => (
+              {flowSteps.map((step, index) => (
                 <article
+                  data-landing-reveal
                   className="group border-b border-ink/15 py-8 md:border-r md:border-b-0 md:px-7 md:first:pl-0 md:last:border-r-0 md:last:pr-0 lg:py-10"
                   key={step.index}
+                  style={{
+                    '--landing-reveal-delay': `${index * 90}ms`,
+                  } as CSSProperties}
                 >
                   <span className="text-xs font-bold tracking-[0.15em] text-primary">
                     {step.index}
@@ -301,7 +353,7 @@ export default function LandingPage() {
 
         <section className="border-y border-ink/10 bg-[#e8efe9] px-5 py-18 sm:px-6 lg:px-8 lg:py-24">
           <div className="mx-auto grid max-w-[1240px] gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:items-center lg:gap-20">
-            <div>
+            <div data-landing-reveal>
               <p className="text-[0.6875rem] font-bold tracking-[0.15em] text-vietnamese uppercase">
                 {t('landing.channelsEyebrow')}
               </p>
@@ -314,9 +366,13 @@ export default function LandingPage() {
             </div>
 
             <div
+              data-landing-reveal
               aria-label={t('landing.channelsDiagramLabel')}
               className="landing-channel-diagram relative grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center"
               role="img"
+              style={{
+                '--landing-reveal-delay': '120ms',
+              } as CSSProperties}
             >
               <div className="rounded-[28px_28px_10px_28px] border border-vietnamese/25 bg-[#f8faf6] p-5 shadow-[0_16px_35px_rgb(22_63_50/0.07)]">
                 <div className="flex items-center justify-between">
@@ -333,11 +389,22 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="relative mx-auto flex size-16 items-center justify-center rounded-full bg-ink text-panel shadow-[0_12px_25px_rgb(28_35_32/0.18)]">
-                <Languages aria-hidden="true" className="size-6" />
+              <div className="landing-channel-hub relative mx-auto flex size-16 items-center justify-center rounded-full bg-ink text-panel shadow-[0_12px_25px_rgb(28_35_32/0.18)]">
                 <span
                   aria-hidden="true"
-                  className="absolute -inset-3 rounded-full border border-ink/15"
+                  className="landing-channel-signal landing-channel-signal-vi"
+                />
+                <span
+                  aria-hidden="true"
+                  className="landing-channel-signal landing-channel-signal-en"
+                />
+                <Languages
+                  aria-hidden="true"
+                  className="relative z-10 size-6"
+                />
+                <span
+                  aria-hidden="true"
+                  className="landing-channel-ring absolute -inset-3 rounded-full border border-ink/15"
                 />
               </div>
 
@@ -364,43 +431,46 @@ export default function LandingPage() {
 
         <section
           aria-labelledby="privacy-title"
-          className="scroll-mt-20 px-5 py-20 sm:px-6 lg:px-8 lg:py-28"
+          className="scroll-mt-20 border-y border-primary/10 bg-[#eef2fa] px-5 py-20 sm:px-6 lg:px-8 lg:py-24"
           id="privacy"
         >
-          <div className="mx-auto grid max-w-310 gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:gap-24">
+          <div
+            data-landing-reveal
+            className="mx-auto grid max-w-310 gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-start lg:gap-24"
+          >
             <div>
               <p className="text-[0.6875rem] font-bold tracking-[0.15em] text-primary uppercase">
                 {t('landing.privacyEyebrow')}
               </p>
               <h2
-                className="landing-display mt-4 max-w-[10ch] text-[clamp(2.5rem,4.5vw,4.2rem)] leading-[1.1] font-medium tracking-tighter text-ink"
+                className="landing-display mt-4 max-w-[11ch] text-[clamp(2.5rem,4.5vw,4.2rem)] leading-[1.02] font-medium tracking-[-0.05em] text-ink"
                 id="privacy-title"
               >
                 {t('landing.privacyTitle')}
               </h2>
             </div>
 
-            <div className="border-t border-ink/15 pt-7">
-              <p className="max-w-2xl text-lg leading-8 text-ink-soft">
+            <div className="border-t border-primary/20 pt-7">
+              <p className="max-w-2xl text-base leading-7 text-ink-soft sm:text-lg sm:leading-8">
                 {t('landing.privacyBody')}
               </p>
 
-              <div className="mt-8 grid gap-5 sm:grid-cols-2">
-                <div className="flex items-start gap-3">
-                  <ShieldCheck
+              <div className="mt-8 divide-y divide-primary/15 border-y border-primary/15">
+                <div className="flex items-start gap-4 py-5">
+                  <Mic2
                     aria-hidden="true"
                     className="mt-0.5 size-5 shrink-0 text-vietnamese"
                   />
-                  <p className="text-sm leading-6 text-muted">
+                  <p className="max-w-xl text-sm leading-6 text-muted-strong">
                     {t('landing.privacyNote')}
                   </p>
                 </div>
-                <div className="flex items-start gap-3">
-                  <Check
+                <div className="flex items-start gap-4 py-5">
+                  <Languages
                     aria-hidden="true"
                     className="mt-0.5 size-5 shrink-0 text-primary"
                   />
-                  <p className="text-sm leading-6 text-muted">
+                  <p className="max-w-xl text-sm leading-6 text-muted-strong">
                     {t('landing.transparencyNote')}
                   </p>
                 </div>
@@ -430,9 +500,12 @@ export default function LandingPage() {
                   onClick={handleStartMeeting}
                   size="lg"
                   trailingIcon={
-                    <ArrowRight aria-hidden="true" className="size-4" />
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="size-4 transition-transform duration-200 ease-out group-hover:translate-x-1"
+                    />
                   }
-                  className="rounded-full border-[#f7f8ff] bg-[#f7f8ff] px-6 text-primary hover:border-[#e5ebff] hover:bg-[#e5ebff]"
+                  className="group rounded-full border-[#f7f8ff] bg-[#f7f8ff] px-6 text-primary hover:border-[#e5ebff] hover:bg-[#e5ebff]"
                 >
                   {t('nav.startMeeting')}
                 </Button>

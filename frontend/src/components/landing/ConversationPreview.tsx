@@ -92,9 +92,12 @@ export function ConversationPreview() {
           >
             {audioLevels.map((level, index) => (
               <span
-                className="w-1 rounded-full bg-primary/55"
+                className="landing-preview-wave w-1 rounded-full bg-primary/55"
                 key={`${level}-${index.toString()}`}
-                style={{ height: `${level}%` }}
+                style={{
+                  animationDelay: `${index * -90}ms`,
+                  height: `${level}%`,
+                }}
               />
             ))}
           </div>
@@ -112,7 +115,7 @@ export function ConversationPreview() {
 
           return (
             <article
-              className="grid grid-cols-[4rem_minmax(0,1fr)] border-b border-ink/10 last:border-b-0 sm:grid-cols-[5.5rem_minmax(0,1fr)]"
+              className={`landing-preview-turn landing-preview-turn-${index + 1} grid grid-cols-[4rem_minmax(0,1fr)] border-b border-ink/10 last:border-b-0 sm:grid-cols-[5.5rem_minmax(0,1fr)]`}
               key={turn.id}
             >
               <div className="relative flex flex-col items-center border-r border-ink/10 bg-[#f0eee7] px-2 py-5">
@@ -148,7 +151,7 @@ export function ConversationPreview() {
                 </p>
 
                 <div
-                  className={`mt-4 rounded-[6px_16px_16px_16px] p-3.5 ${accent.wash}`}
+                  className={`landing-preview-translation landing-preview-translation-${index + 1} mt-4 rounded-[6px_16px_16px_16px] p-3.5 ${accent.wash}`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[0.625rem] font-bold tracking-[0.14em] text-ink-soft">
@@ -171,7 +174,7 @@ export function ConversationPreview() {
 
       <footer className="grid gap-2 border-t border-ink/10 bg-[#f0eee7] px-5 py-3 text-[0.6875rem] text-muted sm:grid-cols-3 sm:px-6">
         <span className="flex items-center gap-2">
-          <span className="size-1.5 rounded-full bg-success" />
+          <span className="landing-preview-live-dot size-1.5 rounded-full bg-success" />
           {t('preview.connection')}
         </span>
         <span className="flex items-center gap-2 sm:justify-center">
