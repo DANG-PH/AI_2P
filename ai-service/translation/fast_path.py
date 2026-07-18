@@ -44,6 +44,12 @@ class FastPathTranslator:
         self._model = model
         self._torch = None
 
+    def preflight(self) -> str:
+        """Load the configured local fast-translation model."""
+
+        self._ensure_model()
+        return f"nllb:{self.model_name}"
+
     def translate(self, text: str, source_lang: str = "vi", target_lang: str = "en") -> TranslationResult:
         started = time.perf_counter()
         text = text.strip()

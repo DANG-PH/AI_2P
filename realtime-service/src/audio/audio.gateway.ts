@@ -128,6 +128,7 @@ export class AudioGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await this.aiBridge.openSession(sessionId, clientId, {
         domain,
         languagePair,
+        speaker: language ?? 'vi',
       });
 
       if (

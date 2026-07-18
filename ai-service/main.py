@@ -21,6 +21,7 @@ from config.glossary import GlossaryManager
 from fallback.monitor import HealthMonitor
 from model_errors import ModelUnavailableError
 from rag.engine import RAGEngine
+from readiness import preflight_runtime
 from session.memory import SessionManager
 from translation.fast_path import FastPathTranslator
 from translation.quality_path import QualityPathTranslator
@@ -45,12 +46,17 @@ def build_pipeline(tier: str = "server", lang_pair: str = "vi-en") -> dict:
     }
 
 
-def preflight_pipeline(pipeline: dict) -> dict[str, str]:
-    """Eagerly verify dependencies that otherwise load on first audio."""
+def preflight_pipeline(
+    pipeline: dict,
+) -> tuple[dict[str, str | None], list[str]]:
+    """Eagerly verify the same runtime paths required by live sessions."""
 
-    return {
-        "vad": pipeline["audio"].preflight(),
-    }
+    return preflight_runtime(
+        audio=pipeline["audio"],
+        asr=pipeline["asr"],
+        fast=pipeline["fast"],
+        quality=pipeline["quality"],
+    )
 
 
 def main() -> None:
@@ -76,12 +82,20 @@ def main() -> None:
     if args.check:
         config = pipeline["config"]
         try:
-            checks = preflight_pipeline(pipeline)
+            checks, warnings = preflight_pipeline(pipeline)
         except ModelUnavailableError as error:
             print(f"Pipeline preflight failed: {error}", file=sys.stderr)
             raise SystemExit(1) from error
         print(f"Pipeline initialized: tier={config.tier}, lang={config.lang_pair}")
         print(f"Audio VAD ready: {checks['vad']}")
+        print(f"ASR ready: {checks['asr']}")
+        print(
+            "Translation ready: "
+            f"fast={checks['fastTranslation'] or 'unavailable'}, "
+            f"quality={checks['qualityTranslation'] or 'unavailable'}",
+        )
+        if warnings:
+            print(f"Readiness warnings: {', '.join(warnings)}")
         print("Local runtime dependencies loaded. External FPT APIs were not called.")
         return
 

@@ -115,7 +115,6 @@ export function useRealtimeConnection({
         }
 
         applyRealtimeEvent(event)
-        socket.emit('speaker.switch', { speaker: localLanguage })
       },
     )
 

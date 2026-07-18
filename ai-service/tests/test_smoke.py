@@ -161,6 +161,11 @@ class NetworkFailQualityTranslator:
         raise ConnectionError("connection lost")
 
 
+class UnavailableTranslator:
+    def preflight(self):
+        raise ModelUnavailableError("translator unavailable")
+
+
 class SlowFastTranslator:
     def translate(self, text, source_lang="vi", target_lang="en"):
         time.sleep(0.25)
@@ -345,6 +350,42 @@ def test_pipeline_error_event_hides_internal_details():
     assert "Torch" not in event["message"]
     log_error.assert_called_once()
     assert "Torch is missing" in str(log_error.call_args)
+
+
+def test_worker_rejects_readiness_without_a_translation_path():
+    ws = FakeWs()
+    pipeline = PipelineSession(ws, "session-not-ready", "client-not-ready")
+    pipeline.audio = make_audio_pipeline()
+    pipeline.asr = ASREngine(model=FakeWhisperModel())
+    pipeline.fast = UnavailableTranslator()
+    pipeline.quality = UnavailableTranslator()
+
+    with patch.object(worker_module.LOGGER, "warning"), patch.object(
+        worker_module.LOGGER,
+        "error",
+    ):
+        asyncio.run(
+            pipeline.handle_control(
+                json.dumps(
+                    {
+                        "type": "session.init",
+                        "config": {
+                            "languagePair": "vi-en",
+                            "speaker": "en",
+                        },
+                    },
+                ),
+            ),
+        )
+
+    assert pipeline.ready is False
+    assert pipeline.speaker == "en"
+    assert ws.events[-1] == {
+        "type": "session.ready",
+        "ready": False,
+        "code": "AI_MODEL_UNAVAILABLE",
+        "message": "The AI session could not become ready.",
+    }
 
 
 def test_fpt_asr_failure_does_not_fallback_to_local():
@@ -578,11 +619,32 @@ async def _websocket_worker_contract():
         response = await reader.readuntil(b"\r\n\r\n")
         assert b"101 Switching Protocols" in response
 
-        await _client_send_json(writer, {"type": "session.init", "config": {"languagePair": "vi-en"}})
+        await _client_send_json(
+            writer,
+            {
+                "type": "session.init",
+                "config": {
+                    "languagePair": "vi-en",
+                    "speaker": "en",
+                },
+            },
+        )
+
+        events = []
+        while not any(
+            event.get("type") == "session.ready" for event in events
+        ):
+            events.append(await _client_receive_json(reader))
+        ready = next(
+            event for event in events if event["type"] == "session.ready"
+        )
+        assert ready["ready"] is True
+        assert ready["speaker"] == "en"
+        assert ready["languagePair"] == "vi-en"
+
         samples = np.ones(FINAL_BYTES // 2, dtype=np.int16) * 1200
         await _client_send_frame(writer, samples.tobytes(), opcode=0x2)
 
-        events = []
         while not any(event.get("type") == "translate.done" for event in events):
             events.append(await _client_receive_json(reader))
         try:
@@ -596,7 +658,10 @@ async def _websocket_worker_contract():
         assert "stt.partial" in event_types
         assert "translate.token" in event_types
         assert event_types.count("translate.done") == 1
+        final = next(event for event in events if event["type"] == "stt.final")
+        assert final["speaker"] == "en"
         done = next(event for event in events if event["type"] == "translate.done")
+        assert done["speaker"] == "en"
         assert done["sourceText"] == "xin chao KPI"
         assert done["fullText"] == "hello KPI (Key Performance Indicator) translated by llm"
     finally:
@@ -661,6 +726,7 @@ if __name__ == "__main__":
     test_silero_vad_missing_torch_fails_preflight()
     test_invalid_vad_mode_fails_preflight()
     test_pipeline_error_event_hides_internal_details()
+    test_worker_rejects_readiness_without_a_translation_path()
     test_fpt_asr_failure_does_not_fallback_to_local()
     test_audio_denoise_channel_diarization_and_overlap()
     test_quality_path_uses_openai_compatible_client()

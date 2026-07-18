@@ -30,6 +30,7 @@ from config.glossary import GlossaryManager
 from fallback.monitor import FallbackLevel, HealthMonitor
 from model_errors import ModelUnavailableError
 from rag.engine import RAGEngine
+from readiness import preflight_runtime
 from session.memory import SessionEntry, SessionManager
 from translation.fast_path import FastPathTranslator
 from translation.quality_path import QualityContext, QualityPathTranslator
@@ -152,6 +153,7 @@ class PipelineSession:
         self.client_id = client_id
         self.speaker = "vi"
         self.language_pair = "vi-en"
+        self.ready = False
         self.audio_buffer = bytearray()
         self.partial_sent = False
         self.partial_segment = None
@@ -209,8 +211,12 @@ class PipelineSession:
             return True
 
         if message_type == "session.init":
+            self.ready = False
             config = message.get("config") if isinstance(message.get("config"), dict) else {}
             self.language_pair = str(config.get("languagePair") or self.language_pair)
+            configured_speaker = config.get("speaker")
+            if configured_speaker in ("vi", "en"):
+                self.speaker = configured_speaker
             for item in config.get("glossary", []) if isinstance(config.get("glossary"), list) else []:
                 if isinstance(item, dict):
                     self.glossary.add_session_term(
@@ -218,7 +224,41 @@ class PipelineSession:
                         str(item.get("preferredOutput") or item.get("translation") or ""),
                     )
             self._ingest_documents(config.get("documents", []))
+            try:
+                capabilities, warnings = await asyncio.to_thread(
+                    self._preflight_session,
+                )
+            except Exception as error:
+                self.ready = False
+                LOGGER.error(
+                    "Readiness failed for session=%s client=%s: %s",
+                    self.session_id,
+                    self.client_id,
+                    error,
+                )
+                await self.ws.send_json(
+                    {
+                        "type": "session.ready",
+                        "ready": False,
+                        "code": "AI_MODEL_UNAVAILABLE",
+                        "message": "The AI session could not become ready.",
+                    },
+                )
+                return True
+
+            self.ready = True
             await self.send_health_status(force=True)
+            await self.ws.send_json(
+                {
+                    "type": "session.ready",
+                    "ready": True,
+                    "speaker": self.speaker,
+                    "languagePair": self.language_pair,
+                    "capabilities": capabilities,
+                    "warnings": warnings,
+                    "externalApisProbed": False,
+                },
+            )
             return True
 
         if message_type in ("status.get", "health.get"):
@@ -250,6 +290,16 @@ class PipelineSession:
         return True
 
     async def handle_audio(self, payload: bytes) -> None:
+        if not self.ready:
+            await self.ws.send_json(
+                {
+                    "type": "error",
+                    "code": "AI_NOT_READY",
+                    "message": "The AI session is not ready for audio.",
+                },
+            )
+            return
+
         await self._track_mic_signal(payload)
         self.audio_buffer.extend(payload)
         utterance_id = self._utterance_id()
@@ -259,6 +309,25 @@ class PipelineSession:
 
         if len(self.audio_buffer) >= FINAL_BYTES:
             await self.finalize_utterance(utterance_id)
+
+    def _preflight_session(self) -> tuple[dict[str, str | None], list[str]]:
+        def log_optional_error(capability: str, error: Exception) -> None:
+            LOGGER.warning(
+                "Optional capability unavailable for session=%s "
+                "client=%s capability=%s: %s",
+                self.session_id,
+                self.client_id,
+                capability,
+                error,
+            )
+
+        return preflight_runtime(
+            audio=self.audio,
+            asr=self.asr,
+            fast=self.fast,
+            quality=self.quality,
+            on_optional_error=log_optional_error,
+        )
 
     async def emit_partial(self, utterance_id: str) -> None:
         try:

@@ -42,11 +42,14 @@ python main.py --check
 python -m tests.test_smoke
 ```
 
-`python main.py --check` now preloads the configured VAD. With the default
-`AUDIO_VAD=silero`, it exits non-zero when Torch is missing or the Silero model
-cannot be loaded, instead of waiting for the first audio turn to fail. It does
-not call external FPT APIs. The first successful Silero preflight may download
-the model through `torch.hub`; keep its cache between deployments.
+`python main.py --check` now uses the same readiness policy as a live session:
+VAD and ASR must be ready, and at least one translation path must be usable.
+With the default `AUDIO_VAD=silero`, it exits non-zero when Torch is missing or
+the Silero model cannot be loaded, instead of waiting for the first audio turn
+to fail. Local Whisper/NLLB models are loaded during this check. External FPT
+credentials and client dependencies are validated, but the APIs are not called.
+The first successful preflight may download models; keep their caches between
+deployments.
 
 For an emergency CPU-only demo while Torch/Silero is being repaired, set
 `AUDIO_VAD=energy`. This bypasses Torch only for VAD and uses a coarser NumPy
@@ -57,6 +60,11 @@ never selected automatically; production remains strict by default.
 Detailed pipeline exceptions are written to the AI worker log with `sessionId`,
 `clientId`, and error code. Client events contain a stable public message rather
 than internal dependency paths.
+
+For every WebSocket session, `session.init` carries the initial `speaker`. The
+worker applies it, runs the readiness policy, and replies with an internal
+`session.ready` ACK. The gateway must wait for this ACK before telling the
+frontend that translation is ready.
 
 Ingest meeting documents into RAG before a meeting:
 

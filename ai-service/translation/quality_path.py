@@ -61,6 +61,18 @@ class QualityPathTranslator:
         )
         self._client = client
 
+    def preflight(self) -> str:
+        """Validate the configured quality-translation client."""
+
+        if self._client is None and (
+            not self.api_key or self.api_key.startswith("replace-with-")
+        ):
+            raise ModelUnavailableError(
+                "A valid API key is required for quality-path translation.",
+            )
+        self._ensure_client()
+        return f"quality:{self.model}"
+
     def translate(self, context: QualityContext) -> QualityResult:
         started = time.perf_counter()
         client = self._ensure_client()

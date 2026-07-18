@@ -2,20 +2,22 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import WebSocket from 'ws';
-import type { AiWorkerEvent } from '../common/types/events.type';
+import type { AiWorkerEvent, Language } from '../common/types/events.type';
 
 type AiSessionConfig = {
   domain: string;
   languagePair: string;
+  speaker: Language;
 };
 
 type AiPipeline = {
   key: string;
   sessionId: string;
   clientId: string;
+  config: AiSessionConfig;
   socket: WebSocket;
   openPromise: Promise<void>;
-  wasOpened: boolean;
+  isReady: boolean;
   intentionalClose: boolean;
   failureEventEmitted: boolean;
 };
@@ -51,6 +53,16 @@ function rawDataToText(data: WebSocket.RawData): string {
   return data.toString('utf8');
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function isAiWorkerReadyMessage(
+  value: unknown,
+): value is Record<string, unknown> & { type: 'session.ready' } {
+  return isRecord(value) && value.type === 'session.ready';
+}
+
 @Injectable()
 export class AiBridgeService implements OnModuleDestroy {
   private readonly logger = new Logger(AiBridgeService.name);
@@ -70,12 +82,24 @@ export class AiBridgeService implements OnModuleDestroy {
     const existingPipeline = this.pipelines.get(key);
 
     if (existingPipeline) {
-      if (existingPipeline.socket.readyState === WebSocket.OPEN) return;
-      if (existingPipeline.socket.readyState === WebSocket.CONNECTING) {
-        return existingPipeline.openPromise;
-      }
+      if (!this.isSameConfig(existingPipeline.config, config)) {
+        this.closePipeline(existingPipeline);
+      } else {
+        if (
+          existingPipeline.socket.readyState === WebSocket.OPEN &&
+          existingPipeline.isReady
+        ) {
+          return;
+        }
+        if (
+          existingPipeline.socket.readyState === WebSocket.CONNECTING ||
+          existingPipeline.socket.readyState === WebSocket.OPEN
+        ) {
+          return existingPipeline.openPromise;
+        }
 
-      this.pipelines.delete(key);
+        this.pipelines.delete(key);
+      }
     }
 
     const aiWsUrl = this.configService.get<string>('AI_WS_URL');
@@ -92,9 +116,10 @@ export class AiBridgeService implements OnModuleDestroy {
       key,
       sessionId,
       clientId,
+      config,
       socket,
       openPromise: Promise.resolve(),
-      wasOpened: false,
+      isReady: false,
       intentionalClose: false,
       failureEventEmitted: false,
     };
@@ -161,17 +186,74 @@ export class AiBridgeService implements OnModuleDestroy {
     config: AiSessionConfig,
   ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const readyTimeoutMs = this.getReadyTimeoutMs();
+      let timeout = setTimeout(() => {
         cleanup();
         reject(new Error('AI worker connection timed out after 5 seconds'));
       }, 5000);
 
       const onOpen = () => {
-        cleanup();
-        pipeline.wasOpened = true;
-        pipeline.socket.send(JSON.stringify({ type: 'session.init', config }));
+        clearTimeout(timeout);
+        pipeline.socket.off('open', onOpen);
+        timeout = setTimeout(() => {
+          cleanup();
+          reject(
+            new Error(
+              `AI worker readiness timed out after ${readyTimeoutMs} milliseconds`,
+            ),
+          );
+        }, readyTimeoutMs);
+
+        try {
+          pipeline.socket.send(
+            JSON.stringify({ type: 'session.init', config }),
+          );
+        } catch (error) {
+          cleanup();
+          reject(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+
         this.logger.log(
-          `AI WebSocket opened for ${pipeline.sessionId}/${pipeline.clientId}`,
+          `AI WebSocket opened for ${pipeline.sessionId}/${pipeline.clientId}; waiting for readiness`,
+        );
+      };
+
+      const onMessage = (data: WebSocket.RawData) => {
+        let message: unknown;
+        try {
+          message = JSON.parse(rawDataToText(data));
+        } catch {
+          return;
+        }
+
+        if (!isAiWorkerReadyMessage(message)) return;
+
+        if (message.ready !== true) {
+          cleanup();
+          reject(
+            new Error(
+              `AI worker readiness failed (${typeof message.code === 'string' ? message.code : 'UNKNOWN'})`,
+            ),
+          );
+          return;
+        }
+
+        if (
+          message.speaker !== config.speaker ||
+          message.languagePair !== config.languagePair
+        ) {
+          cleanup();
+          reject(
+            new Error('AI worker readiness ACK did not match session.init'),
+          );
+          return;
+        }
+
+        cleanup();
+        pipeline.isReady = true;
+        this.logger.log(
+          `AI worker ready for ${pipeline.sessionId}/${pipeline.clientId} (speaker=${config.speaker})`,
         );
         resolve();
       };
@@ -189,11 +271,13 @@ export class AiBridgeService implements OnModuleDestroy {
       const cleanup = () => {
         clearTimeout(timeout);
         pipeline.socket.off('open', onOpen);
+        pipeline.socket.off('message', onMessage);
         pipeline.socket.off('error', onError);
         pipeline.socket.off('close', onClose);
       };
 
       pipeline.socket.once('open', onOpen);
+      pipeline.socket.on('message', onMessage);
       pipeline.socket.once('error', onError);
       pipeline.socket.once('close', onClose);
     });
@@ -203,6 +287,9 @@ export class AiBridgeService implements OnModuleDestroy {
     pipeline.socket.on('message', (data) => {
       try {
         const parsedEvent: unknown = JSON.parse(rawDataToText(data));
+        if (isAiWorkerReadyMessage(parsedEvent)) {
+          return;
+        }
         if (!this.isAiWorkerEvent(parsedEvent)) {
           this.logger.warn(
             `Ignored invalid AI event for ${pipeline.sessionId}/${pipeline.clientId}`,
@@ -228,7 +315,7 @@ export class AiBridgeService implements OnModuleDestroy {
       );
 
       if (
-        pipeline.wasOpened &&
+        pipeline.isReady &&
         !pipeline.intentionalClose &&
         !pipeline.failureEventEmitted
       ) {
@@ -251,7 +338,7 @@ export class AiBridgeService implements OnModuleDestroy {
       );
 
       if (
-        pipeline.wasOpened &&
+        pipeline.isReady &&
         !pipeline.intentionalClose &&
         !pipeline.failureEventEmitted
       ) {
@@ -302,15 +389,37 @@ export class AiBridgeService implements OnModuleDestroy {
     sessionId: string,
     clientId: string,
   ): WebSocket | undefined {
-    const socket = this.pipelines.get(
+    const pipeline = this.pipelines.get(
       this.getPipelineKey(sessionId, clientId),
-    )?.socket;
+    );
+    if (!pipeline?.isReady) return undefined;
 
-    return socket?.readyState === WebSocket.OPEN ? socket : undefined;
+    return pipeline.socket.readyState === WebSocket.OPEN
+      ? pipeline.socket
+      : undefined;
+  }
+
+  private getReadyTimeoutMs(): number {
+    const configured = Number(
+      this.configService.get<string>('AI_READY_TIMEOUT_MS') ?? 120000,
+    );
+    if (!Number.isFinite(configured)) return 120000;
+    return Math.min(300000, Math.max(1000, Math.floor(configured)));
   }
 
   private getPipelineKey(sessionId: string, clientId: string): string {
     return JSON.stringify([sessionId, clientId]);
+  }
+
+  private isSameConfig(
+    current: AiSessionConfig,
+    next: AiSessionConfig,
+  ): boolean {
+    return (
+      current.domain === next.domain &&
+      current.languagePair === next.languagePair &&
+      current.speaker === next.speaker
+    );
   }
 
   private isAiWorkerEvent(value: unknown): value is AiWorkerEvent {

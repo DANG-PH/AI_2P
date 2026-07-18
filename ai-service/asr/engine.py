@@ -58,6 +58,33 @@ class ASREngine:
         self._use_fpt_asr = os.getenv("FPT_ASR", "").lower() == "true"
         self._fpt_client = None
 
+    def preflight(self) -> str:
+        """Validate and load the ASR path used by this session."""
+
+        if self._use_fpt_asr:
+            api_key = (
+                os.getenv("FPT_API_KEY")
+                or os.getenv("FPT_AI_FACTORY_API_KEY")
+                or os.getenv("FPT_AI")
+            )
+            if not api_key or api_key.startswith("replace-with-"):
+                raise ModelUnavailableError(
+                    "A valid FPT API key is required when FPT_ASR=true.",
+                )
+
+            if self._fpt_client is None:
+                from config.fpt_models import get_fpt_client
+
+                self._fpt_client = get_fpt_client()
+
+            from config.fpt_models import MODELS as FPT
+
+            model_name = os.getenv("FPT_ASR_MODEL", FPT["asr"])
+            return f"fpt:{model_name}"
+
+        self._ensure_model()
+        return f"whisper:{self.model_name}"
+
     def transcribe_stream(
         self,
         audio_segment,

@@ -56,6 +56,7 @@ Quality translation sử dụng FPT AI Marketplace.
 
 ```env
 AI_WS_URL=ws://127.0.0.1:8765/ws/session
+AI_READY_TIMEOUT_MS=120000
 ```
 
 Trong container, thay `127.0.0.1` bằng hostname của container AI worker:
@@ -85,9 +86,11 @@ npm test
 npm run start:dev
 ```
 
-`python main.py --check` preload VAD đã cấu hình và thoát khác `0` nếu thiếu
-Torch hoặc không tải được Silero. Lệnh này không gọi API FPT thật. Production
-giữ `AUDIO_VAD=silero`; khi cần cứu demo tạm thời có thể dùng
+`python main.py --check` chạy cùng readiness policy với phiên thật: VAD và ASR
+phải sẵn sàng, đồng thời phải có ít nhất một đường dịch hoạt động. Local
+Whisper/NLLB được load thật; credential và client dependency của FPT được kiểm
+tra nhưng lệnh này không gọi API FPT. Production giữ `AUDIO_VAD=silero`; khi
+cần cứu demo tạm thời có thể dùng
 `AUDIO_VAD=energy`, là detector năng lượng NumPy có độ chính xác thấp hơn và
 không được tự động bật. Chế độ này chỉ thay thế VAD; Whisper/NLLB local vẫn cần
 Torch, còn các đường ASR/dịch FPT từ xa vẫn có thể nhận audio. Lần preload
@@ -121,12 +124,37 @@ Sau khi kết nối thành công, backend gửi:
   "type": "session.init",
   "config": {
     "domain": "business",
-    "languagePair": "vi-en"
+    "languagePair": "vi-en",
+    "speaker": "en"
   }
 }
 ```
 
-Backend chờ tối đa 5 giây để kết nối AI worker. Nếu thất bại, frontend nhận:
+`speaker` được lấy từ `localLanguage` của client, nên worker không phụ thuộc vào
+giá trị mặc định tiếng Việt. Sau khi áp dụng config và hoàn tất preflight,
+worker trả ACK nội bộ:
+
+```json
+{
+  "type": "session.ready",
+  "ready": true,
+  "speaker": "en",
+  "languagePair": "vi-en",
+  "capabilities": {
+    "vad": "silero",
+    "asr": "fpt:FPT.AI-whisper-large-v3-turbo",
+    "fastTranslation": "nllb:facebook/nllb-200-distilled-600M",
+    "qualityTranslation": "quality:SaoLa3.1-medium"
+  },
+  "warnings": [],
+  "externalApisProbed": false
+}
+```
+
+Gateway chỉ phát `session.ready` cho frontend sau ACK hợp lệ và khớp
+`speaker/languagePair`. Thời gian chờ readiness mặc định là 120 giây, cấu hình
+bằng `AI_READY_TIMEOUT_MS` trong khoảng 1–300 giây. ACK âm, sai config, timeout
+hoặc WebSocket đóng sớm đều làm frontend nhận:
 
 ```json
 {
@@ -165,6 +193,8 @@ Khi người nói đổi ngôn ngữ, frontend gửi:
 ```
 
 Giá trị `speaker` hợp lệ là `vi` hoặc `en`.
+Lệnh này dành cho đổi speaker sau khi session đã ready; speaker ban đầu luôn đi
+trong `session.init`.
 
 ## 5. Event từ AI worker
 
@@ -321,6 +351,7 @@ manager và chỉ cho `ai-service` outbound tới `mkp-api.fptcloud.com:443`.
 - [ ] `FPT_ASR=true` và API key có quyền dùng model ASR.
 - [ ] Audio là raw PCM16 mono 16 kHz.
 - [ ] Backend mở một AI WebSocket cho mỗi client trong session.
+- [ ] `session.init` chứa đúng speaker và gateway nhận readiness ACK tương ứng.
 - [ ] Frontend xử lý `stt.partial`, `stt.final`, `translate.token`,
       `translate.done` và `error`.
 - [ ] Voice đã được phép gửi tới FPT.
