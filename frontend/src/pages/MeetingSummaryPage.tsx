@@ -420,7 +420,7 @@ export default function MeetingSummaryPage() {
               </div>
               {hasSummaryContent && (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={startAiSummaryGeneration}
                   disabled={
