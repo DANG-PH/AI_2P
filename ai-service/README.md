@@ -89,5 +89,6 @@ ws://localhost:8765/ws/session?sessionId=X&clientId=Y
 | `VAD_THRESHOLD` | `0.5` | Ngưỡng Silero VAD (0–1). Tăng → ít nhạy hơn |
 | `SILENCE_MS` | `400` | Khoảng lặng (ms) để kết thúc câu |
 | `INTERIM_INTERVAL_S` | `1.5` | Tần suất gửi interim ASR |
-| `FPT_ASR_MODEL` | `FPT.AI-whisper-large-v3-turbo` | Đổi sang `whisper-large-v3-turbo` nếu cần |
+| `FPT_ASR_MODEL_VI` | `FPT.AI-whisper-large-v3-turbo` | Model ASR chuyên biệt cho tiếng Việt |
+| `FPT_ASR_MODEL_EN` | `whisper-large-v3-turbo` | Model ASR chuẩn đa ngữ cho tiếng Anh |
 | `FPT_LLM_MODEL` | `SaoLa3.1-medium` | Đổi sang `gpt-oss-20b` cho accuracy cao hơn |

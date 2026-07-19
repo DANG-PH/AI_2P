@@ -48,6 +48,11 @@ class SessionWorker:
         self._vad_buf: VadBuffer | None = None
 
         self._pipeline_task: asyncio.Task | None = None
+        self._interim_asr_task: asyncio.Task | None = None
+        self._interim_stt_task: asyncio.Task | None = None
+        self._interim_translate_task: asyncio.Task | None = None
+        self._final_task: asyncio.Task | None = None
+        self._last_interim_text: str = ""
 
     # ------------------------------------------------------------------
     # Entry point
@@ -97,8 +102,12 @@ class SessionWorker:
             new_speaker = msg.get("speaker")
             if new_speaker in ("vi", "en"):
                 self._speaker = new_speaker
+                self._cancel_interim_tasks()
+                if self._final_task and not self._final_task.done():
+                    self._final_task.cancel()
                 if self._vad_buf:
                     self._vad_buf.reset()
+                self._utterance_id = ""
                 logger.info("Speaker switched → %s", self._speaker)
 
     async def _on_audio(self, raw: bytes) -> None:
@@ -138,7 +147,7 @@ class SessionWorker:
             "speaker": self._speaker,
             "languagePair": self._language_pair,
             "capabilities": {
-                "asr": f"fpt:{cfg.FPT_ASR_MODEL}",
+                "asr": f"fpt:vi={cfg.FPT_ASR_MODEL_VI},en={cfg.FPT_ASR_MODEL_EN}",
                 "translate": f"fpt:{cfg.FPT_LLM_MODEL}",
             },
             "externalApisProbed": True,
@@ -200,65 +209,145 @@ class SessionWorker:
 
     def _schedule_interim(self, pcm: np.ndarray) -> None:
         if self._loop:
-            self._loop.create_task(self._run_interim_asr(pcm.copy()))
+            if self._interim_asr_task and not self._interim_asr_task.done():
+                self._interim_asr_task.cancel()
+            self._interim_asr_task = self._loop.create_task(self._run_interim_asr(pcm.copy()))
 
     def _schedule_utterance(self, pcm: np.ndarray) -> None:
         if self._loop:
-            self._loop.create_task(self._run_final_asr(pcm.copy()))
+            self._cancel_interim_tasks()
+            if self._final_task and not self._final_task.done():
+                self._final_task.cancel()
+            self._final_task = self._loop.create_task(self._run_final_asr(pcm.copy()))
+
+    def _cancel_interim_tasks(self) -> None:
+        if self._interim_asr_task and not self._interim_asr_task.done():
+            self._interim_asr_task.cancel()
+        if self._interim_stt_task and not self._interim_stt_task.done():
+            self._interim_stt_task.cancel()
+        if self._interim_translate_task and not self._interim_translate_task.done():
+            self._interim_translate_task.cancel()
+        self._last_interim_text = ""
 
     async def _run_interim_asr(self, pcm: np.ndarray) -> None:
-        text = await fpt_asr.transcribe(pcm, self._speaker)
-        if not text:
-            return
-        utt_id = self._current_utterance_id()
-        await self._send_json({
-            "type": "stt.partial",
-            "text": text,
-            "speaker": self._speaker,
-            "utteranceId": utt_id,
-        })
-        logger.debug("stt.partial [%s]: %r", self._speaker, text[:60])
+        try:
+            text = await fpt_asr.transcribe(pcm, self._speaker)
+            if not text or text == self._last_interim_text:
+                return
+            old_text = self._last_interim_text
+            self._last_interim_text = text
+            utt_id = self._current_utterance_id()
+
+            if self._interim_stt_task and not self._interim_stt_task.done():
+                self._interim_stt_task.cancel()
+            self._interim_stt_task = self._loop.create_task(
+                self._stream_stt_words(old_text, text, utt_id)
+            )
+
+            if self._interim_translate_task and not self._interim_translate_task.done():
+                self._interim_translate_task.cancel()
+            self._interim_translate_task = self._loop.create_task(
+                self._stream_interim_translation(text, utt_id)
+            )
+        except asyncio.CancelledError:
+            pass
+
+    async def _stream_stt_words(self, old_text: str, new_text: str, utt_id: str) -> None:
+        try:
+            old_words = old_text.split() if old_text else []
+            new_words = new_text.split() if new_text else []
+
+            # Find common prefix length
+            k = 0
+            while k < len(old_words) and k < len(new_words) and old_words[k] == new_words[k]:
+                k += 1
+
+            # If no new words to stream (or only minor differences), just emit immediately
+            if k >= len(new_words):
+                await self._send_json({
+                    "type": "stt.partial",
+                    "text": new_text,
+                    "speaker": self._speaker,
+                    "utteranceId": utt_id,
+                })
+                return
+
+            # Stream the remaining new words for smooth typing effect
+            current_prefix = " ".join(new_words[:k]) if k > 0 else ""
+            for i in range(k, len(new_words)):
+                word = new_words[i]
+                current_prefix = f"{current_prefix} {word}".strip() if current_prefix else word
+                await self._send_json({
+                    "type": "stt.partial",
+                    "text": current_prefix,
+                    "speaker": self._speaker,
+                    "utteranceId": utt_id,
+                })
+                logger.debug("stt.partial [%s]: %r", self._speaker, current_prefix[:60])
+                await asyncio.sleep(0.025)  # 25ms per word
+        except asyncio.CancelledError:
+            pass
+
+    async def _stream_interim_translation(self, text: str, utt_id: str) -> None:
+        src, tgt = self._speaker, self._other_language()
+        try:
+            async for partial in fpt_translate.translate_stream(text, src, tgt):
+                await self._send_json({
+                    "type": "translate.partial",
+                    "text": partial,
+                    "sourceText": text,
+                    "speaker": self._speaker,
+                    "utteranceId": utt_id,
+                })
+        except asyncio.CancelledError:
+            pass
 
     async def _run_final_asr(self, pcm: np.ndarray) -> None:
-        utt_id = str(uuid.uuid4())
-        self._utterance_id = utt_id
+        try:
+            old_interim_text = self._last_interim_text
+            self._cancel_interim_tasks()
+            utt_id = self._current_utterance_id()
+            self._utterance_id = ""  # clear so next speech gets a new utterance ID
 
-        text = await fpt_asr.transcribe(pcm, self._speaker)
-        if not text:
-            return
+            text = await fpt_asr.transcribe(pcm, self._speaker)
+            if not text:
+                return
 
-        await self._send_json({
-            "type": "stt.final",
-            "text": text,
-            "speaker": self._speaker,
-            "utteranceId": utt_id,
-        })
-        logger.info("stt.final [%s]: %r", self._speaker, text[:80])
+            # Stream any remaining words before emitting stt.final
+            await self._stream_stt_words(old_interim_text, text, utt_id)
 
-        src, tgt = self._speaker, self._other_language()
-
-        last_partial = ""
-        async for partial in fpt_translate.translate_stream(text, src, tgt):
-            if self._utterance_id != utt_id:
-                return  # speaker switched → discard stale translation
-            last_partial = partial
             await self._send_json({
-                "type": "translate.partial",
-                "text": partial,
-                "sourceText": text,
+                "type": "stt.final",
+                "text": text,
                 "speaker": self._speaker,
                 "utteranceId": utt_id,
             })
+            logger.info("stt.final [%s]: %r", self._speaker, text[:80])
 
-        if last_partial:
-            await self._send_json({
-                "type": "translate.done",
-                "fullText": last_partial,
-                "sourceText": text,
-                "speaker": self._speaker,
-                "utteranceId": utt_id,
-            })
-            logger.info("translate.done [%s→%s]: %r", src, tgt, last_partial[:80])
+            src, tgt = self._speaker, self._other_language()
+
+            last_partial = ""
+            async for partial in fpt_translate.translate_stream(text, src, tgt):
+                last_partial = partial
+                await self._send_json({
+                    "type": "translate.partial",
+                    "text": partial,
+                    "sourceText": text,
+                    "speaker": self._speaker,
+                    "utteranceId": utt_id,
+                })
+
+            if last_partial:
+                await self._send_json({
+                    "type": "translate.done",
+                    "fullText": last_partial,
+                    "sourceText": text,
+                    "speaker": self._speaker,
+                    "utteranceId": utt_id,
+                })
+                logger.info("translate.done [%s→%s]: %r", src, tgt, last_partial[:80])
+        except asyncio.CancelledError:
+            pass
 
     # ------------------------------------------------------------------
     # Helpers
@@ -298,6 +387,9 @@ class SessionWorker:
             logger.debug("WS send error: %s", exc)
 
     async def _shutdown(self) -> None:
+        self._cancel_interim_tasks()
+        if self._final_task and not self._final_task.done():
+            self._final_task.cancel()
         if self._pipeline_task:
             self._pipeline_task.cancel()
             try:

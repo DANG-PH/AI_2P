@@ -410,7 +410,7 @@ export default function LiveMeetingPage() {
             languageOrder={meeting.languageOrder}
             localLanguage={meeting.localLanguage}
             activePushLanguage={
-              pushToTalk.active ? meeting.localLanguage : null
+              pushToTalk.active ? meeting.languageOrder[0] : null
             }
             onToggleMode={handleToggleMode}
             onSwapLanguages={swapLanguages}

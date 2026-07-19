@@ -57,6 +57,7 @@ export function useRealtimeConnection({
     status: meetingStatus,
     title,
     localLanguage,
+    languageOrder,
     participants,
   } = meeting
   const { clientId } = realtimeSession
@@ -234,6 +235,15 @@ export function useRealtimeConnection({
     setRealtimeStatus,
     title,
   ])
+
+  const activeSpeaker = languageOrder[0]
+
+  useEffect(() => {
+    const socket = socketRef.current
+    if (meetingStatus === 'live' && gatewayReady && socket?.connected) {
+      socket.emit('speaker.switch', { speaker: activeSpeaker })
+    }
+  }, [activeSpeaker, gatewayReady, meetingStatus])
 
   useEffect(() => {
     const canStream =

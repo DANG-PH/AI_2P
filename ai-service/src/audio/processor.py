@@ -60,12 +60,23 @@ class AudioProcessor:
     @staticmethod
     def _load_silero_vad():
         logger.info("Loading Silero VAD …")
+        import sys
+        if "torchaudio" not in sys.modules:
+            try:
+                import torchaudio
+            except OSError as exc:
+                logger.warning("torchaudio DLL load failed (%s); mocking to allow silero_vad ONNX loading", exc)
+                import types
+                dummy_ta = types.ModuleType("torchaudio")
+                dummy_ta.__version__ = "0.0.0"
+                sys.modules["torchaudio"] = dummy_ta
+
         try:
             # silero-vad >= 5.0 ships its own loader
             from silero_vad import load_silero_vad  # type: ignore[import]
 
-            model = load_silero_vad()
-            logger.info("Silero VAD loaded via silero_vad package")
+            model = load_silero_vad(onnx=True)
+            logger.info("Silero VAD loaded via silero_vad package (ONNX)")
             return model
         except ImportError:
             # Fallback: older API via torch.hub
@@ -74,7 +85,7 @@ class AudioProcessor:
                 "snakers4/silero-vad",
                 "silero_vad",
                 force_reload=False,
-                onnx=False,
+                onnx=True,
             )
             return model
 

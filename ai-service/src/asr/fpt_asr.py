@@ -53,16 +53,17 @@ async def transcribe(pcm_float: np.ndarray, language: str) -> str:
     audio_file = io.BytesIO(wav_bytes)
     audio_file.name = "audio.wav"
 
+    model_name = config.get_asr_model(language)
     try:
         response = await _client.audio.transcriptions.create(
-            model=config.FPT_ASR_MODEL,
+            model=model_name,
             file=audio_file,
             language=language,
             response_format="json",
             timeout=30,
         )
         text = response.text.strip()
-        logger.debug("ASR [%s]: %r", language, text[:80])
+        logger.debug("ASR [%s|%s]: %r", language, model_name, text[:80])
         return text
     except Exception as exc:  # noqa: BLE001
         logger.error("ASR error: %s", exc)
